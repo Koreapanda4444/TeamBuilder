@@ -91,7 +91,15 @@
               <h2>결과</h2>
               <span id="resultState">대기</span>
             </div>
-            <button class="secondary-button compact" id="copyButton" type="button">복사</button>
+            <div class="result-actions">
+              <button class="secondary-button compact" id="clearLocksButton" type="button">고정 해제</button>
+              <select class="copy-mode" id="copyModeSelect" aria-label="복사 형식">
+                <option value="grouped">그룹명</option>
+                <option value="names">이름만</option>
+                <option value="audit">검토 포함</option>
+              </select>
+              <button class="secondary-button compact" id="copyButton" type="button">복사</button>
+            </div>
           </div>
 
           <div class="summary-strip" id="summaryStrip">

@@ -8,6 +8,8 @@ const attributesInput = document.querySelector("#attributesInput");
 const generateButton = document.querySelector("#generateButton");
 const shuffleButton = document.querySelector("#shuffleButton");
 const resetButton = document.querySelector("#resetButton");
+const clearLocksButton = document.querySelector("#clearLocksButton");
+const copyModeSelect = document.querySelector("#copyModeSelect");
 const copyButton = document.querySelector("#copyButton");
 const statusMessage = document.querySelector("#statusMessage");
 const groupsGrid = document.querySelector("#groupsGrid");
@@ -26,6 +28,7 @@ const saveSettingsButton = document.querySelector("#saveSettingsButton");
 const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput");
 
 let lastPlan = null;
+let lastAudit = [];
 let savedSettings = [];
 let lockedAssignments = new Map();
 const DEFAULT_ATTEMPTS = 1800;
@@ -178,6 +181,7 @@ function parseFixedRules(value, names, groupCount) {
   const known = new Set(names);
   const rules = [];
   const errors = [];
+  const fixedByMember = new Map();
 
   splitLines(value).forEach((line, lineIndex) => {
     const match = line.match(/^(.+?)\s*(?:=|:|->|>|,|\s)\s*(\d+)\s*(?:그룹)?$/u);
@@ -200,7 +204,16 @@ function parseFixedRules(value, names, groupCount) {
       return;
     }
 
-    rules.push({ member, groupIndex: groupNumber - 1, raw: line });
+    const groupIndex = groupNumber - 1;
+    const existingGroupIndex = fixedByMember.get(member);
+
+    if (existingGroupIndex !== undefined && existingGroupIndex !== groupIndex) {
+      errors.push(`${member}의 고정 배정이 서로 충돌합니다.`);
+      return;
+    }
+
+    fixedByMember.set(member, groupIndex);
+    rules.push({ member, groupIndex, raw: line });
   });
 
   return { rules, errors };
@@ -397,6 +410,65 @@ function createFixedComponentTargets(components, fixedRules) {
   }
 
   return { targets, errors };
+}
+
+function getComponentLookup(components) {
+  const componentByName = new Map();
+
+  for (const component of components) {
+    for (const member of component.members) {
+      componentByName.set(member, component);
+    }
+  }
+
+  return componentByName;
+}
+
+function validatePreflight(input, components, fixedTargets, maxTargetSize) {
+  const errors = [];
+  const componentByName = getComponentLookup(components);
+
+  for (const rule of input.separateRules) {
+    const componentIds = uniqueItems(
+      rule.members
+        .map((member) => componentByName.get(member))
+        .filter(Boolean)
+        .map((component) => String(component.id)),
+    );
+
+    if (componentIds.length > input.groupCount) {
+      errors.push(`${rule.members.join(", ")}는 ${input.groupCount}개 그룹에 모두 분리할 수 없습니다.`);
+    }
+  }
+
+  const fixedSizeByGroup = Array.from({ length: input.groupCount }, () => 0);
+
+  fixedTargets.forEach((groupIndex, componentId) => {
+    const component = components.find((item) => item.id === componentId);
+
+    if (component) {
+      fixedSizeByGroup[groupIndex] += component.size;
+    }
+  });
+
+  fixedSizeByGroup.forEach((size, groupIndex) => {
+    if (size > maxTargetSize) {
+      errors.push(`${groupIndex + 1}그룹에 고정된 인원이 너무 많습니다.`);
+    }
+  });
+
+  if (!errors.length) {
+    return null;
+  }
+
+  return {
+    error: errors[0],
+    audit: errors.map((detail) => ({
+      type: "error",
+      title: "사전 확인",
+      detail,
+    })),
+  };
 }
 
 function getTargetSizes(total, groupCount) {
@@ -604,6 +676,12 @@ function buildPlan(input) {
     };
   }
 
+  const preflight = validatePreflight(input, components, fixed.targets, maxTargetSize);
+
+  if (preflight) {
+    return preflight;
+  }
+
   let bestPlan = null;
   let bestScore = Infinity;
 
@@ -759,6 +837,7 @@ function renderSavedSettings() {
   savedSettings.forEach((item, index) => {
     const row = document.createElement("div");
     const loadButton = document.createElement("button");
+    const renameButton = document.createElement("button");
     const deleteButton = document.createElement("button");
     const title = document.createElement("strong");
     const detail = document.createElement("span");
@@ -767,17 +846,21 @@ function renderSavedSettings() {
     row.className = "saved-item";
     loadButton.className = "saved-load";
     loadButton.type = "button";
+    renameButton.className = "saved-rename";
+    renameButton.type = "button";
     deleteButton.className = "saved-delete";
     deleteButton.type = "button";
 
     title.textContent = item.name || `${index + 1}. ${meta.groupCount}그룹`;
     detail.textContent = `${meta.participantCount}명 / 규칙 ${meta.ruleCount}개`;
+    renameButton.textContent = "수정";
     deleteButton.textContent = "삭제";
 
     loadButton.append(title, detail);
     loadButton.addEventListener("click", () => loadSavedSetting(item));
+    renameButton.addEventListener("click", () => renameSavedSetting(item.id));
     deleteButton.addEventListener("click", () => deleteSavedSetting(item.id));
-    row.append(loadButton, deleteButton);
+    row.append(loadButton, renameButton, deleteButton);
     savedSettingsList.append(row);
   });
 }
@@ -823,6 +906,40 @@ function deleteSavedSetting(id) {
   setStatus("저장값을 삭제했습니다.", "success");
 }
 
+function renameSavedSetting(id, nextName = null) {
+  const item = savedSettings.find((savedItem) => savedItem.id === id);
+
+  if (!item) {
+    return;
+  }
+
+  let name = nextName;
+
+  if (name === null) {
+    if (typeof prompt !== "function") {
+      return;
+    }
+
+    name = prompt("저장값 이름", item.name || "");
+  }
+
+  if (name === null) {
+    return;
+  }
+
+  const trimmed = String(name).trim();
+
+  if (!trimmed) {
+    setStatus("저장값 이름을 입력하세요.", "error");
+    return;
+  }
+
+  item.name = trimmed;
+  persistSavedSettings();
+  renderSavedSettings();
+  setStatus("저장값 이름을 수정했습니다.", "success");
+}
+
 function applyLockedRules(input) {
   const participantSet = new Set(input.participants);
   const lockedRules = [];
@@ -840,6 +957,7 @@ function applyLockedRules(input) {
 }
 
 function renderAudit(items, input = null) {
+  lastAudit = items;
   auditList.innerHTML = "";
 
   if (input?.duplicateCount) {
@@ -862,6 +980,8 @@ function renderAudit(items, input = null) {
       },
     ];
   }
+
+  lastAudit = items;
 
   for (const item of items) {
     const element = document.createElement("div");
@@ -891,6 +1011,7 @@ function generate({ preserveLocks = false } = {}) {
 
   if (input.errors.length) {
     lastPlan = null;
+    lastAudit = [];
     renderGroups(null);
     renderAudit(
       input.errors.map((detail) => ({
@@ -909,6 +1030,7 @@ function generate({ preserveLocks = false } = {}) {
 
   if (result.error) {
     lastPlan = null;
+    lastAudit = result.audit;
     renderGroups(null);
     renderAudit(result.audit, input);
     setResultState("실패", "error");
@@ -917,6 +1039,7 @@ function generate({ preserveLocks = false } = {}) {
   }
 
   lastPlan = result.plan;
+  lastAudit = result.audit;
   renderGroups(result.plan);
   renderAudit(result.audit, input);
   setResultState("완료", "ready");
@@ -930,9 +1053,14 @@ async function copyResult() {
   }
 
   const groupNames = getGroupNames(lastPlan.length);
-  const text = lastPlan
+  const groupedText = lastPlan
     .map((group, index) => `${groupNames[index]}\n${group.map((member) => `- ${member}`).join("\n")}`)
     .join("\n\n");
+  const namesOnlyText = lastPlan.map((group) => group.join("\n")).join("\n\n");
+  const auditText = lastAudit.map((item) => `- ${item.title}: ${item.detail}`).join("\n");
+  const mode = copyModeSelect.value;
+  const text =
+    mode === "names" ? namesOnlyText : mode === "audit" ? `${groupedText}\n\n검토\n${auditText || "- 검토 없음"}` : groupedText;
 
   try {
     await navigator.clipboard.writeText(text);
@@ -945,6 +1073,7 @@ async function copyResult() {
 function reset() {
   applyDraftSettings(null);
   lastPlan = null;
+  lastAudit = [];
   lockedAssignments = new Map();
   savedSettingsNameInput.value = "";
   renderDraftStats();
@@ -955,6 +1084,18 @@ function reset() {
   setStatus("");
 }
 
+function clearLockedAssignments() {
+  if (!lockedAssignments.size) {
+    setStatus("고정된 멤버가 없습니다.", "error");
+    return;
+  }
+
+  lockedAssignments = new Map();
+  renderGroups(lastPlan);
+  setResultState("수정됨");
+  setStatus("고정된 멤버를 모두 해제했습니다.", "success");
+}
+
 function boot() {
   loadSavedSettings();
   reset();
@@ -963,6 +1104,7 @@ function boot() {
 generateButton.addEventListener("click", () => generate());
 shuffleButton.addEventListener("click", () => generate({ preserveLocks: true }));
 resetButton.addEventListener("click", () => reset());
+clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
 saveSettingsButton.addEventListener("click", saveCurrentSettings);
 [participantsInput, groupCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {

@@ -328,6 +328,7 @@ input[type="text"]:focus {
 .ghost-button:hover,
 .mini-button:hover,
 .saved-load:hover,
+.saved-rename:hover,
 .saved-delete:hover {
   border-color: var(--line-strong);
   background: var(--surface-soft);
@@ -379,6 +380,23 @@ input[type="text"]:focus {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.result-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.copy-mode {
+  min-height: 34px;
+  max-width: 86px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+  color: var(--text);
+  font-weight: 800;
+  padding: 0 7px;
 }
 
 #resultState {
@@ -594,12 +612,13 @@ input[type="text"]:focus {
 
 .saved-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: stretch;
 }
 
 .saved-load,
+.saved-rename,
 .saved-delete {
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -631,6 +650,14 @@ input[type="text"]:focus {
 }
 
 .saved-delete {
+  min-width: 44px;
+  padding: 0 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.saved-rename {
   min-width: 44px;
   padding: 0 8px;
   color: var(--muted);
@@ -698,6 +725,11 @@ input[type="text"]:focus {
 
   .summary-strip {
     grid-template-columns: 1fr;
+  }
+
+  .result-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .summary-strip div + div {
