@@ -17,7 +17,9 @@
             <h1>새 배정</h1>
           </div>
         </div>
-        <button class="ghost-button" id="resetButton" type="button">초기화</button>
+        <div class="header-actions">
+          <button class="ghost-button" id="resetButton" type="button">초기화</button>
+        </div>
       </header>
 
       <section class="layout" aria-label="TeamBuilder 작업 공간">
@@ -102,7 +104,7 @@
           <div class="groups-grid" id="groupsGrid"></div>
         </section>
 
-        <aside class="side-stack" aria-label="검토와 기록">
+        <aside class="side-stack" aria-label="검토와 저장값">
           <section class="panel audit-panel">
             <div class="block-header">
               <h2>검토</h2>
@@ -110,12 +112,15 @@
             <div class="audit-list" id="auditList"></div>
           </section>
 
-          <section class="panel history-panel">
+          <section class="panel saved-panel">
             <div class="block-header">
-              <h2>기록</h2>
-              <span id="historyCount">0</span>
+              <h2>저장값</h2>
+              <div class="panel-actions">
+                <span id="savedSettingsCount">0</span>
+                <button class="mini-button" id="saveSettingsButton" type="button" aria-label="현재 입력 저장">+</button>
+              </div>
             </div>
-            <div class="history-list" id="historyList"></div>
+            <div class="saved-list" id="savedSettingsList"></div>
           </section>
         </aside>
       </section>

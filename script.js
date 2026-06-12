@@ -18,12 +18,14 @@ const resultState = document.querySelector("#resultState");
 const summaryParticipants = document.querySelector("#summaryParticipants");
 const summaryGroups = document.querySelector("#summaryGroups");
 const summaryRules = document.querySelector("#summaryRules");
-const historyCount = document.querySelector("#historyCount");
-const historyList = document.querySelector("#historyList");
+const savedSettingsCount = document.querySelector("#savedSettingsCount");
+const savedSettingsList = document.querySelector("#savedSettingsList");
+const saveSettingsButton = document.querySelector("#saveSettingsButton");
 
 let lastPlan = null;
-let history = [];
+let savedSettings = [];
 const DEFAULT_ATTEMPTS = 1800;
+const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
 
 function splitLines(value) {
   return value
@@ -68,6 +70,68 @@ function setResultState(text, type = "default") {
   resultState.textContent = text;
   resultState.classList.toggle("is-ready", type === "ready");
   resultState.classList.toggle("is-error", type === "error");
+}
+
+function getStorage() {
+  try {
+    if (typeof localStorage === "undefined") {
+      return null;
+    }
+
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function getDraftSettings() {
+  return {
+    participants: participantsInput.value,
+    groupCount: groupCountInput.value,
+    together: togetherInput.value,
+    separate: separateInput.value,
+    fixed: fixedInput.value,
+  };
+}
+
+function applyDraftSettings(settings) {
+  participantsInput.value = settings?.participants || "";
+  groupCountInput.value = settings?.groupCount || "3";
+  togetherInput.value = settings?.together || "";
+  separateInput.value = settings?.separate || "";
+  fixedInput.value = settings?.fixed || "";
+}
+
+function persistSavedSettings() {
+  const storage = getStorage();
+
+  if (!storage) {
+    setStatus("브라우저 저장소를 사용할 수 없습니다.", "error");
+    return;
+  }
+
+  try {
+    storage.setItem(SAVED_SETTINGS_STORAGE_KEY, JSON.stringify(savedSettings));
+  } catch {
+    setStatus("저장값을 저장하지 못했습니다.", "error");
+  }
+}
+
+function loadSavedSettings() {
+  const storage = getStorage();
+
+  if (!storage) {
+    savedSettings = [];
+    return;
+  }
+
+  try {
+    const raw = storage.getItem(SAVED_SETTINGS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    savedSettings = Array.isArray(parsed) ? parsed : [];
+  } catch {
+    savedSettings = [];
+  }
 }
 
 function parseRuleLine(line) {
@@ -531,56 +595,87 @@ function renderGroups(plan) {
   });
 }
 
-function renderHistory() {
-  historyCount.textContent = String(history.length);
-  historyList.innerHTML = "";
+function getSettingsMeta(settings) {
+  const participantCount = splitLines(settings.participants).length;
+  const ruleCount = splitLines(settings.together).length + splitLines(settings.separate).length + splitLines(settings.fixed).length;
+  const groupCount = Number(settings.groupCount) || 0;
 
-  if (!history.length) {
+  return { participantCount, ruleCount, groupCount };
+}
+
+function renderSavedSettings() {
+  savedSettingsCount.textContent = String(savedSettings.length);
+  savedSettingsList.innerHTML = "";
+
+  if (!savedSettings.length) {
     const empty = document.createElement("div");
-    empty.className = "history-empty";
-    empty.textContent = "기록 없음";
-    historyList.append(empty);
+    empty.className = "saved-empty";
+    empty.textContent = "저장값 없음";
+    savedSettingsList.append(empty);
     return;
   }
 
-  history.forEach((item, index) => {
-    const button = document.createElement("button");
-    button.className = "history-item";
-    button.type = "button";
-
+  savedSettings.forEach((item, index) => {
+    const row = document.createElement("div");
+    const loadButton = document.createElement("button");
+    const deleteButton = document.createElement("button");
     const title = document.createElement("strong");
     const detail = document.createElement("span");
+    const meta = getSettingsMeta(item.settings);
 
-    title.textContent = `${index + 1}. ${item.groupCount}그룹`;
-    detail.textContent = `${item.participantCount}명 / 규칙 ${item.ruleCount}개`;
+    row.className = "saved-item";
+    loadButton.className = "saved-load";
+    loadButton.type = "button";
+    deleteButton.className = "saved-delete";
+    deleteButton.type = "button";
 
-    button.append(title, detail);
-    button.addEventListener("click", () => restoreHistory(item));
-    historyList.append(button);
+    title.textContent = `${index + 1}. ${meta.groupCount}그룹`;
+    detail.textContent = `${meta.participantCount}명 / 규칙 ${meta.ruleCount}개`;
+    deleteButton.textContent = "삭제";
+
+    loadButton.append(title, detail);
+    loadButton.addEventListener("click", () => loadSavedSetting(item));
+    deleteButton.addEventListener("click", () => deleteSavedSetting(item.id));
+    row.append(loadButton, deleteButton);
+    savedSettingsList.append(row);
   });
 }
 
-function addHistory(plan, input) {
-  history.unshift({
+function saveCurrentSettings() {
+  const settings = getDraftSettings();
+  const meta = getSettingsMeta(settings);
+
+  if (meta.participantCount === 0 && meta.ruleCount === 0) {
+    setStatus("저장할 입력값이 없습니다.", "error");
+    return;
+  }
+
+  savedSettings.unshift({
     id: Date.now() + Math.random(),
-    plan: plan.map((group) => [...group]),
-    participantCount: input.participants.length,
-    groupCount: input.groupCount,
-    ruleCount: input.togetherRules.length + input.separateRules.length + input.fixedRules.length,
-    audit: validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules),
+    settings,
   });
 
-  history = history.slice(0, 6);
-  renderHistory();
+  savedSettings = savedSettings.slice(0, 12);
+  persistSavedSettings();
+  renderSavedSettings();
+  setStatus("현재 입력값을 저장했습니다.", "success");
 }
 
-function restoreHistory(item) {
-  lastPlan = item.plan.map((group) => [...group]);
-  renderGroups(lastPlan);
-  renderAudit(item.audit);
-  renderSummary(item.participantCount, item.groupCount, item.ruleCount);
-  setResultState("기록", "ready");
-  setStatus("기록에서 결과를 불러왔습니다.", "success");
+function loadSavedSetting(item) {
+  applyDraftSettings(item.settings);
+  lastPlan = null;
+  renderDraftStats();
+  renderGroups(null);
+  renderAudit([]);
+  setResultState("대기");
+  setStatus("저장값을 불러왔습니다.", "success");
+}
+
+function deleteSavedSetting(id) {
+  savedSettings = savedSettings.filter((item) => item.id !== id);
+  persistSavedSettings();
+  renderSavedSettings();
+  setStatus("저장값을 삭제했습니다.", "success");
 }
 
 function renderAudit(items, input = null) {
@@ -657,7 +752,6 @@ function generate() {
   lastPlan = result.plan;
   renderGroups(result.plan);
   renderAudit(result.audit, input);
-  addHistory(result.plan, input);
   setResultState("완료", "ready");
   setStatus(`${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`, "success");
 }
@@ -681,26 +775,27 @@ async function copyResult() {
 }
 
 function reset() {
-  participantsInput.value = "";
-  groupCountInput.value = "3";
-  togetherInput.value = "";
-  separateInput.value = "";
-  fixedInput.value = "";
+  applyDraftSettings(null);
   lastPlan = null;
-  history = [];
   renderDraftStats();
   renderSummary(0, 0, 0);
   renderGroups(null);
   renderAudit([]);
-  renderHistory();
+  renderSavedSettings();
   setResultState("대기");
   setStatus("");
 }
 
+function boot() {
+  loadSavedSettings();
+  reset();
+}
+
 generateButton.addEventListener("click", generate);
 shuffleButton.addEventListener("click", generate);
-resetButton.addEventListener("click", reset);
+resetButton.addEventListener("click", () => reset());
 copyButton.addEventListener("click", copyResult);
+saveSettingsButton.addEventListener("click", saveCurrentSettings);
 [participantsInput, groupCountInput, togetherInput, separateInput, fixedInput].forEach((input) => {
   input.addEventListener("input", () => {
     renderDraftStats();
@@ -710,4 +805,4 @@ copyButton.addEventListener("click", copyResult);
   });
 });
 
-reset();
+boot();
