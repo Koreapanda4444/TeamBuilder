@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="TeamBuilder는 참가자를 그룹으로 나누고 결과를 확인하는 도구입니다." />
+    <title>TeamBuilder</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div class="identity">
+          <div class="mark" aria-hidden="true">TB</div>
+          <div>
+            <p>TeamBuilder</p>
+            <h1>새 배정</h1>
+          </div>
+        </div>
+        <button class="ghost-button" id="resetButton" type="button">초기화</button>
+      </header>
+
+      <section class="layout" aria-label="TeamBuilder 작업 공간">
+        <aside class="panel input-panel" aria-label="입력">
+          <section class="block">
+            <div class="block-header">
+              <h2>명단</h2>
+              <span id="participantCount">0명</span>
+            </div>
+            <label class="field">
+              <span>참가자</span>
+              <textarea id="participantsInput" rows="12" spellcheck="false"></textarea>
+            </label>
+            <div class="preview-list" id="participantPreview"></div>
+          </section>
+
+          <section class="block compact-block">
+            <div class="block-header">
+              <h2>배정</h2>
+            </div>
+            <label class="field">
+              <span>그룹 수</span>
+              <input id="groupCountInput" type="number" min="2" max="24" value="3" />
+            </label>
+          </section>
+
+          <section class="block">
+            <div class="block-header">
+              <h2>규칙</h2>
+              <span id="ruleCount">0개</span>
+            </div>
+            <label class="field">
+              <span>함께 배정</span>
+              <textarea id="togetherInput" rows="4" spellcheck="false"></textarea>
+            </label>
+            <label class="field">
+              <span>분리 배정</span>
+              <textarea id="separateInput" rows="4" spellcheck="false"></textarea>
+            </label>
+          </section>
+
+          <div class="action-row">
+            <button class="primary-button" id="generateButton" type="button">생성</button>
+            <button class="secondary-button" id="shuffleButton" type="button">다시 생성</button>
+          </div>
+
+          <p class="status-message" id="statusMessage" role="status" aria-live="polite"></p>
+        </aside>
+
+        <section class="panel result-panel" aria-label="결과">
+          <div class="result-toolbar">
+            <div>
+              <h2>결과</h2>
+              <span id="resultState">대기</span>
+            </div>
+            <button class="secondary-button compact" id="copyButton" type="button">복사</button>
+          </div>
+
+          <div class="summary-strip" id="summaryStrip">
+            <div>
+              <span>참가자</span>
+              <strong id="summaryParticipants">0</strong>
+            </div>
+            <div>
+              <span>그룹</span>
+              <strong id="summaryGroups">0</strong>
+            </div>
+            <div>
+              <span>규칙</span>
+              <strong id="summaryRules">0</strong>
+            </div>
+          </div>
+
+          <div class="empty-state" id="emptyState">
+            <strong>결과 없음</strong>
+          </div>
+
+          <div class="groups-grid" id="groupsGrid"></div>
+        </section>
+
+        <aside class="side-stack" aria-label="검토와 기록">
+          <section class="panel audit-panel">
+            <div class="block-header">
+              <h2>검토</h2>
+            </div>
+            <div class="audit-list" id="auditList"></div>
+          </section>
+
+          <section class="panel history-panel">
+            <div class="block-header">
+              <h2>기록</h2>
+              <span id="historyCount">0</span>
+            </div>
+            <div class="history-list" id="historyList"></div>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
