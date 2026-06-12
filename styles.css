@@ -168,6 +168,20 @@ h3 {
   background: var(--surface-soft);
 }
 
+.assignment-grid,
+.rule-grid {
+  display: grid;
+  gap: 8px;
+}
+
+.assignment-grid {
+  grid-template-columns: 92px minmax(0, 1fr);
+}
+
+.rule-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .block-header,
 .result-toolbar {
   display: flex;
@@ -201,7 +215,8 @@ h3 {
 }
 
 textarea,
-input[type="number"] {
+input[type="number"],
+input[type="text"] {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -233,7 +248,8 @@ input[type="number"] {
 }
 
 textarea:focus,
-input[type="number"]:focus {
+input[type="number"]:focus,
+input[type="text"]:focus {
   border-color: rgba(36, 87, 197, 0.68);
   background: #ffffff;
   box-shadow: 0 0 0 3px rgba(36, 87, 197, 0.12);
@@ -478,11 +494,38 @@ input[type="number"]:focus {
 }
 
 .member-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   min-height: 38px;
-  padding: 9px 12px;
+  padding: 6px 8px 6px 12px;
   border-bottom: 1px solid var(--line);
   font-weight: 700;
   overflow-wrap: anywhere;
+}
+
+.member-list span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.lock-button {
+  flex: 0 0 auto;
+  min-height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lock-button.is-locked {
+  border-color: rgba(20, 107, 95, 0.25);
+  background: #edf7f4;
+  color: var(--primary);
 }
 
 .member-list li:last-child {
@@ -564,6 +607,11 @@ input[type="number"]:focus {
   color: var(--text);
 }
 
+.saved-name-input {
+  min-height: 32px;
+  padding: 0 9px;
+}
+
 .saved-load {
   display: grid;
   gap: 6px;
@@ -640,6 +688,11 @@ input[type="number"]:focus {
 
   .layout,
   .side-stack {
+    grid-template-columns: 1fr;
+  }
+
+  .assignment-grid,
+  .rule-grid {
     grid-template-columns: 1fr;
   }
 

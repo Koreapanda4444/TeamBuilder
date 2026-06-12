@@ -40,10 +40,16 @@
             <div class="block-header">
               <h2>배정</h2>
             </div>
-            <label class="field">
-              <span>그룹 수</span>
-              <input id="groupCountInput" type="number" min="2" max="24" value="3" />
-            </label>
+            <div class="assignment-grid">
+              <label class="field">
+                <span>그룹 수</span>
+                <input id="groupCountInput" type="number" min="2" max="24" value="3" />
+              </label>
+              <label class="field">
+                <span>그룹 이름</span>
+                <textarea id="groupNamesInput" rows="2" spellcheck="false"></textarea>
+              </label>
+            </div>
           </section>
 
           <section class="block">
@@ -51,18 +57,24 @@
               <h2>규칙</h2>
               <span id="ruleCount">0개</span>
             </div>
-            <label class="field">
-              <span>함께 배정</span>
-              <textarea id="togetherInput" rows="2" spellcheck="false"></textarea>
-            </label>
-            <label class="field">
-              <span>분리 배정</span>
-              <textarea id="separateInput" rows="2" spellcheck="false"></textarea>
-            </label>
-            <label class="field">
-              <span>고정 배정</span>
-              <textarea id="fixedInput" rows="2" spellcheck="false"></textarea>
-            </label>
+            <div class="rule-grid">
+              <label class="field">
+                <span>함께 배정</span>
+                <textarea id="togetherInput" rows="2" spellcheck="false"></textarea>
+              </label>
+              <label class="field">
+                <span>분리 배정</span>
+                <textarea id="separateInput" rows="2" spellcheck="false"></textarea>
+              </label>
+              <label class="field">
+                <span>고정 배정</span>
+                <textarea id="fixedInput" rows="2" spellcheck="false"></textarea>
+              </label>
+              <label class="field">
+                <span>속성 균형</span>
+                <textarea id="attributesInput" rows="2" spellcheck="false"></textarea>
+              </label>
+            </div>
           </section>
 
           <div class="action-row">
@@ -120,6 +132,7 @@
                 <button class="mini-button" id="saveSettingsButton" type="button" aria-label="현재 입력 저장">+</button>
               </div>
             </div>
+            <input class="saved-name-input" id="savedSettingsNameInput" type="text" aria-label="저장값 이름" />
             <div class="saved-list" id="savedSettingsList"></div>
           </section>
         </aside>

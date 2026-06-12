@@ -1,8 +1,10 @@
 const participantsInput = document.querySelector("#participantsInput");
 const groupCountInput = document.querySelector("#groupCountInput");
+const groupNamesInput = document.querySelector("#groupNamesInput");
 const togetherInput = document.querySelector("#togetherInput");
 const separateInput = document.querySelector("#separateInput");
 const fixedInput = document.querySelector("#fixedInput");
+const attributesInput = document.querySelector("#attributesInput");
 const generateButton = document.querySelector("#generateButton");
 const shuffleButton = document.querySelector("#shuffleButton");
 const resetButton = document.querySelector("#resetButton");
@@ -21,9 +23,11 @@ const summaryRules = document.querySelector("#summaryRules");
 const savedSettingsCount = document.querySelector("#savedSettingsCount");
 const savedSettingsList = document.querySelector("#savedSettingsList");
 const saveSettingsButton = document.querySelector("#saveSettingsButton");
+const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput");
 
 let lastPlan = null;
 let savedSettings = [];
+let lockedAssignments = new Map();
 const DEFAULT_ATTEMPTS = 1800;
 const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
 
@@ -88,18 +92,22 @@ function getDraftSettings() {
   return {
     participants: participantsInput.value,
     groupCount: groupCountInput.value,
+    groupNames: groupNamesInput.value,
     together: togetherInput.value,
     separate: separateInput.value,
     fixed: fixedInput.value,
+    attributes: attributesInput.value,
   };
 }
 
 function applyDraftSettings(settings) {
   participantsInput.value = settings?.participants || "";
   groupCountInput.value = settings?.groupCount || "3";
+  groupNamesInput.value = settings?.groupNames || "";
   togetherInput.value = settings?.together || "";
   separateInput.value = settings?.separate || "";
   fixedInput.value = settings?.fixed || "";
+  attributesInput.value = settings?.attributes || "";
 }
 
 function persistSavedSettings() {
@@ -198,6 +206,45 @@ function parseFixedRules(value, names, groupCount) {
   return { rules, errors };
 }
 
+function parseAttributeRules(value, names) {
+  const known = new Set(names);
+  const rules = [];
+  const errors = [];
+
+  splitLines(value).forEach((line, lineIndex) => {
+    const match = line.match(/^(.+?)\s*(?:=|:|,|\s)\s*(.+)$/u);
+
+    if (!match) {
+      errors.push(`속성 균형 ${lineIndex + 1}번째 줄은 이름과 값을 입력해야 합니다.`);
+      return;
+    }
+
+    const member = match[1].trim();
+    const value = match[2].trim();
+
+    if (!known.has(member)) {
+      errors.push(`속성 균형 ${lineIndex + 1}번째 줄의 이름을 참가자에서 찾을 수 없습니다: ${member}`);
+      return;
+    }
+
+    if (!value) {
+      errors.push(`속성 균형 ${lineIndex + 1}번째 줄의 값이 비어 있습니다.`);
+      return;
+    }
+
+    rules.push({ member, value, raw: line });
+  });
+
+  return { rules, errors };
+}
+
+function getGroupNames(groupCount) {
+  const names = splitLines(groupNamesInput.value);
+  const count = Number.isInteger(groupCount) && groupCount > 0 ? groupCount : 0;
+
+  return Array.from({ length: count }, (_, index) => names[index] || `${index + 1}그룹`);
+}
+
 function getInputs() {
   const participants = uniqueItems(splitLines(participantsInput.value));
   const duplicateCount = splitLines(participantsInput.value).length - participants.length;
@@ -224,16 +271,19 @@ function getInputs() {
   const together = parseRules(togetherInput.value, participants, "함께 배정");
   const separate = parseRules(separateInput.value, participants, "분리 배정");
   const fixed = parseFixedRules(fixedInput.value, participants, groupCount);
+  const attributes = parseAttributeRules(attributesInput.value, participants);
 
-  errors.push(...together.errors, ...separate.errors, ...fixed.errors);
+  errors.push(...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
 
   return {
     participants,
     groupCount,
+    groupNames: getGroupNames(groupCount),
     attempts,
     togetherRules: together.rules,
     separateRules: separate.rules,
     fixedRules: fixed.rules,
+    attributeRules: attributes.rules,
     duplicateCount,
     errors,
   };
@@ -420,7 +470,42 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
   return place(0) ? groups.map((group) => shuffle(group.members)) : null;
 }
 
-function validatePlan(plan, togetherRules, separateRules, fixedRules = []) {
+function getAttributeBalanceScore(plan, attributeRules = []) {
+  if (!attributeRules.length) {
+    return 0;
+  }
+
+  const groupIndexByName = new Map();
+  const valueCounts = new Map();
+
+  plan.forEach((group, groupIndex) => {
+    group.forEach((member) => groupIndexByName.set(member, groupIndex));
+  });
+
+  attributeRules.forEach((rule) => {
+    const groupIndex = groupIndexByName.get(rule.member);
+
+    if (groupIndex === undefined) {
+      return;
+    }
+
+    if (!valueCounts.has(rule.value)) {
+      valueCounts.set(rule.value, Array.from({ length: plan.length }, () => 0));
+    }
+
+    valueCounts.get(rule.value)[groupIndex] += 1;
+  });
+
+  let score = 0;
+
+  valueCounts.forEach((counts) => {
+    score += Math.max(...counts) - Math.min(...counts);
+  });
+
+  return score;
+}
+
+function validatePlan(plan, togetherRules, separateRules, fixedRules = [], attributeRules = []) {
   const groupIndexByName = new Map();
   const audit = [];
 
@@ -469,6 +554,16 @@ function validatePlan(plan, togetherRules, separateRules, fixedRules = []) {
     });
   }
 
+  if (attributeRules.length) {
+    const score = getAttributeBalanceScore(plan, attributeRules);
+
+    audit.push({
+      type: score === 0 ? "ok" : "warning",
+      title: score === 0 ? "속성 균형 만족" : "속성 균형 반영",
+      detail: `${attributeRules.length}명 기준`,
+    });
+  }
+
   return audit;
 }
 
@@ -509,16 +604,32 @@ function buildPlan(input) {
     };
   }
 
+  let bestPlan = null;
+  let bestScore = Infinity;
+
   for (let attempt = 0; attempt < input.attempts; attempt += 1) {
     const targetSizes = getTargetSizes(input.participants.length, input.groupCount);
     const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets);
 
     if (plan) {
-      return {
-        plan,
-        audit: validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules),
-      };
+      const score = getAttributeBalanceScore(plan, input.attributeRules);
+
+      if (score < bestScore) {
+        bestPlan = plan;
+        bestScore = score;
+      }
+
+      if (score === 0) {
+        break;
+      }
     }
+  }
+
+  if (bestPlan) {
+    return {
+      plan: bestPlan,
+      audit: validatePlan(bestPlan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules),
+    };
   }
 
   return {
@@ -542,7 +653,10 @@ function renderSummary(participantCount, groupCount, ruleCount) {
 function renderDraftStats() {
   const participants = uniqueItems(splitLines(participantsInput.value));
   const rules =
-    splitLines(togetherInput.value).length + splitLines(separateInput.value).length + splitLines(fixedInput.value).length;
+    splitLines(togetherInput.value).length +
+    splitLines(separateInput.value).length +
+    splitLines(fixedInput.value).length +
+    splitLines(attributesInput.value).length;
 
   participantCount.textContent = `${participants.length}명`;
   ruleCount.textContent = `${rules}개`;
@@ -562,6 +676,16 @@ function renderDraftStats() {
   }
 }
 
+function toggleMemberLock(member, groupIndex) {
+  if (lockedAssignments.get(member) === groupIndex) {
+    lockedAssignments.delete(member);
+  } else {
+    lockedAssignments.set(member, groupIndex);
+  }
+
+  renderGroups(lastPlan);
+}
+
 function renderGroups(plan) {
   groupsGrid.innerHTML = "";
   emptyState.classList.toggle("is-hidden", Boolean(plan));
@@ -569,6 +693,8 @@ function renderGroups(plan) {
   if (!plan) {
     return;
   }
+
+  const groupNames = getGroupNames(plan.length);
 
   plan.forEach((members, index) => {
     const card = document.createElement("article");
@@ -579,13 +705,24 @@ function renderGroups(plan) {
     const count = document.createElement("span");
     const list = document.createElement("ul");
 
-    title.textContent = `${index + 1}그룹`;
+    title.textContent = groupNames[index];
     count.textContent = `${members.length}명`;
     list.className = "member-list";
 
     members.forEach((member) => {
       const item = document.createElement("li");
-      item.textContent = member;
+      const name = document.createElement("span");
+      const lockButton = document.createElement("button");
+      const locked = lockedAssignments.get(member) === index;
+
+      name.textContent = member;
+      lockButton.className = "lock-button";
+      lockButton.classList.toggle("is-locked", locked);
+      lockButton.type = "button";
+      lockButton.textContent = locked ? "해제" : "고정";
+      lockButton.addEventListener("click", () => toggleMemberLock(member, index));
+
+      item.append(name, lockButton);
       list.append(item);
     });
 
@@ -597,7 +734,11 @@ function renderGroups(plan) {
 
 function getSettingsMeta(settings) {
   const participantCount = splitLines(settings.participants).length;
-  const ruleCount = splitLines(settings.together).length + splitLines(settings.separate).length + splitLines(settings.fixed).length;
+  const ruleCount =
+    splitLines(settings.together).length +
+    splitLines(settings.separate).length +
+    splitLines(settings.fixed).length +
+    splitLines(settings.attributes || "").length;
   const groupCount = Number(settings.groupCount) || 0;
 
   return { participantCount, ruleCount, groupCount };
@@ -629,7 +770,7 @@ function renderSavedSettings() {
     deleteButton.className = "saved-delete";
     deleteButton.type = "button";
 
-    title.textContent = `${index + 1}. ${meta.groupCount}그룹`;
+    title.textContent = item.name || `${index + 1}. ${meta.groupCount}그룹`;
     detail.textContent = `${meta.participantCount}명 / 규칙 ${meta.ruleCount}개`;
     deleteButton.textContent = "삭제";
 
@@ -644,6 +785,7 @@ function renderSavedSettings() {
 function saveCurrentSettings() {
   const settings = getDraftSettings();
   const meta = getSettingsMeta(settings);
+  const name = savedSettingsNameInput.value.trim() || `저장값 ${savedSettings.length + 1}`;
 
   if (meta.participantCount === 0 && meta.ruleCount === 0) {
     setStatus("저장할 입력값이 없습니다.", "error");
@@ -652,10 +794,12 @@ function saveCurrentSettings() {
 
   savedSettings.unshift({
     id: Date.now() + Math.random(),
+    name,
     settings,
   });
 
   savedSettings = savedSettings.slice(0, 12);
+  savedSettingsNameInput.value = "";
   persistSavedSettings();
   renderSavedSettings();
   setStatus("현재 입력값을 저장했습니다.", "success");
@@ -664,6 +808,7 @@ function saveCurrentSettings() {
 function loadSavedSetting(item) {
   applyDraftSettings(item.settings);
   lastPlan = null;
+  lockedAssignments = new Map();
   renderDraftStats();
   renderGroups(null);
   renderAudit([]);
@@ -676,6 +821,22 @@ function deleteSavedSetting(id) {
   persistSavedSettings();
   renderSavedSettings();
   setStatus("저장값을 삭제했습니다.", "success");
+}
+
+function applyLockedRules(input) {
+  const participantSet = new Set(input.participants);
+  const lockedRules = [];
+  const nextLocks = new Map();
+
+  lockedAssignments.forEach((groupIndex, member) => {
+    if (participantSet.has(member) && groupIndex >= 0 && groupIndex < input.groupCount) {
+      lockedRules.push({ member, groupIndex, raw: `${member}=${groupIndex + 1}`, locked: true });
+      nextLocks.set(member, groupIndex);
+    }
+  });
+
+  lockedAssignments = nextLocks;
+  input.fixedRules = [...input.fixedRules, ...lockedRules];
 }
 
 function renderAudit(items, input = null) {
@@ -716,11 +877,17 @@ function renderAudit(items, input = null) {
   }
 }
 
-function generate() {
+function generate({ preserveLocks = false } = {}) {
   const input = getInputs();
-  const ruleCount = input.togetherRules.length + input.separateRules.length + input.fixedRules.length;
-  renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0, ruleCount);
+  if (!preserveLocks) {
+    lockedAssignments = new Map();
+  } else {
+    applyLockedRules(input);
+  }
+
+  const ruleCount = input.togetherRules.length + input.separateRules.length + input.fixedRules.length + input.attributeRules.length;
   renderDraftStats();
+  renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0, ruleCount);
 
   if (input.errors.length) {
     lastPlan = null;
@@ -762,8 +929,9 @@ async function copyResult() {
     return;
   }
 
+  const groupNames = getGroupNames(lastPlan.length);
   const text = lastPlan
-    .map((group, index) => `${index + 1}그룹\n${group.map((member) => `- ${member}`).join("\n")}`)
+    .map((group, index) => `${groupNames[index]}\n${group.map((member) => `- ${member}`).join("\n")}`)
     .join("\n\n");
 
   try {
@@ -777,8 +945,9 @@ async function copyResult() {
 function reset() {
   applyDraftSettings(null);
   lastPlan = null;
+  lockedAssignments = new Map();
+  savedSettingsNameInput.value = "";
   renderDraftStats();
-  renderSummary(0, 0, 0);
   renderGroups(null);
   renderAudit([]);
   renderSavedSettings();
@@ -791,15 +960,18 @@ function boot() {
   reset();
 }
 
-generateButton.addEventListener("click", generate);
-shuffleButton.addEventListener("click", generate);
+generateButton.addEventListener("click", () => generate());
+shuffleButton.addEventListener("click", () => generate({ preserveLocks: true }));
 resetButton.addEventListener("click", () => reset());
 copyButton.addEventListener("click", copyResult);
 saveSettingsButton.addEventListener("click", saveCurrentSettings);
-[participantsInput, groupCountInput, togetherInput, separateInput, fixedInput].forEach((input) => {
+[participantsInput, groupCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {
   input.addEventListener("input", () => {
     renderDraftStats();
     if (lastPlan) {
+      if (input === groupNamesInput) {
+        renderGroups(lastPlan);
+      }
       setResultState("수정됨");
     }
   });
