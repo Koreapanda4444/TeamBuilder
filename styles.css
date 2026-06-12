@@ -292,6 +292,10 @@ input[type="text"]:focus {
   gap: 8px;
 }
 
+.action-row .primary-button {
+  width: 100%;
+}
+
 .primary-button,
 .secondary-button,
 .ghost-button,

@@ -6,7 +6,6 @@ const separateInput = document.querySelector("#separateInput");
 const fixedInput = document.querySelector("#fixedInput");
 const attributesInput = document.querySelector("#attributesInput");
 const generateButton = document.querySelector("#generateButton");
-const shuffleButton = document.querySelector("#shuffleButton");
 const resetButton = document.querySelector("#resetButton");
 const clearLocksButton = document.querySelector("#clearLocksButton");
 const copyModeSelect = document.querySelector("#copyModeSelect");
@@ -997,13 +996,9 @@ function renderAudit(items, input = null) {
   }
 }
 
-function generate({ preserveLocks = false } = {}) {
+function generate() {
   const input = getInputs();
-  if (!preserveLocks) {
-    lockedAssignments = new Map();
-  } else {
-    applyLockedRules(input);
-  }
+  applyLockedRules(input);
 
   const ruleCount = input.togetherRules.length + input.separateRules.length + input.fixedRules.length + input.attributeRules.length;
   renderDraftStats();
@@ -1101,8 +1096,7 @@ function boot() {
   reset();
 }
 
-generateButton.addEventListener("click", () => generate());
-shuffleButton.addEventListener("click", () => generate({ preserveLocks: true }));
+generateButton.addEventListener("click", generate);
 resetButton.addEventListener("click", () => reset());
 clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
