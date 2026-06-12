@@ -190,14 +190,14 @@ input[type="number"] {
 }
 
 textarea {
-  min-height: 78px;
+  min-height: 56px;
   resize: vertical;
   padding: 10px 11px;
   line-height: 1.48;
 }
 
 #participantsInput {
-  min-height: 172px;
+  min-height: 168px;
 }
 
 input[type="number"] {

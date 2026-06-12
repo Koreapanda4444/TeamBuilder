@@ -2,6 +2,7 @@ const participantsInput = document.querySelector("#participantsInput");
 const groupCountInput = document.querySelector("#groupCountInput");
 const togetherInput = document.querySelector("#togetherInput");
 const separateInput = document.querySelector("#separateInput");
+const fixedInput = document.querySelector("#fixedInput");
 const generateButton = document.querySelector("#generateButton");
 const shuffleButton = document.querySelector("#shuffleButton");
 const resetButton = document.querySelector("#resetButton");
@@ -101,6 +102,38 @@ function parseRules(value, names, kind) {
   return { rules, errors };
 }
 
+function parseFixedRules(value, names, groupCount) {
+  const known = new Set(names);
+  const rules = [];
+  const errors = [];
+
+  splitLines(value).forEach((line, lineIndex) => {
+    const match = line.match(/^(.+?)\s*(?:=|:|->|>|,|\s)\s*(\d+)\s*(?:그룹)?$/u);
+
+    if (!match) {
+      errors.push(`고정 배정 ${lineIndex + 1}번째 줄은 이름과 그룹 번호를 입력해야 합니다.`);
+      return;
+    }
+
+    const member = match[1].trim();
+    const groupNumber = Number(match[2]);
+
+    if (!known.has(member)) {
+      errors.push(`고정 배정 ${lineIndex + 1}번째 줄의 이름을 참가자에서 찾을 수 없습니다: ${member}`);
+      return;
+    }
+
+    if (!Number.isInteger(groupNumber) || groupNumber < 1 || groupNumber > groupCount) {
+      errors.push(`고정 배정 ${lineIndex + 1}번째 줄의 그룹 번호가 범위를 벗어났습니다.`);
+      return;
+    }
+
+    rules.push({ member, groupIndex: groupNumber - 1, raw: line });
+  });
+
+  return { rules, errors };
+}
+
 function getInputs() {
   const participants = uniqueItems(splitLines(participantsInput.value));
   const duplicateCount = splitLines(participantsInput.value).length - participants.length;
@@ -126,8 +159,9 @@ function getInputs() {
 
   const together = parseRules(togetherInput.value, participants, "함께 배정");
   const separate = parseRules(separateInput.value, participants, "분리 배정");
+  const fixed = parseFixedRules(fixedInput.value, participants, groupCount);
 
-  errors.push(...together.errors, ...separate.errors);
+  errors.push(...together.errors, ...separate.errors, ...fixed.errors);
 
   return {
     participants,
@@ -135,6 +169,7 @@ function getInputs() {
     attempts,
     togetherRules: together.rules,
     separateRules: separate.rules,
+    fixedRules: fixed.rules,
     duplicateCount,
     errors,
   };
@@ -223,6 +258,33 @@ function createSeparatedComponentPairs(components, separateRules) {
   return { pairs, errors };
 }
 
+function createFixedComponentTargets(components, fixedRules) {
+  const componentByName = new Map();
+  const targets = new Map();
+  const errors = [];
+
+  for (const component of components) {
+    for (const member of component.members) {
+      componentByName.set(member, component.id);
+    }
+  }
+
+  for (const rule of fixedRules) {
+    const componentId = componentByName.get(rule.member);
+    const existingTarget = targets.get(componentId);
+
+    if (existingTarget !== undefined && existingTarget !== rule.groupIndex) {
+      const component = components.find((item) => item.id === componentId);
+      errors.push(`${component.members.join(", ")}의 고정 배정이 서로 충돌합니다.`);
+      continue;
+    }
+
+    targets.set(componentId, rule.groupIndex);
+  }
+
+  return { targets, errors };
+}
+
 function getTargetSizes(total, groupCount) {
   const base = Math.floor(total / groupCount);
   const extra = total % groupCount;
@@ -246,7 +308,7 @@ function hasSeparationConflict(group, component, separatedPairs) {
   });
 }
 
-function assignComponents(components, groupCount, targetSizes, separatedPairs) {
+function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets) {
   const groups = Array.from({ length: groupCount }, (_, index) => ({
     id: index,
     targetSize: targetSizes[index],
@@ -254,7 +316,11 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs) {
     components: [],
   }));
 
-  const orderedComponents = shuffle(components).sort((left, right) => right.size - left.size);
+  const orderedComponents = shuffle(components).sort((left, right) => {
+    const leftFixed = fixedTargets.has(left.id) ? 1 : 0;
+    const rightFixed = fixedTargets.has(right.id) ? 1 : 0;
+    return rightFixed - leftFixed || right.size - left.size;
+  });
 
   function place(index) {
     if (index === orderedComponents.length) {
@@ -262,7 +328,12 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs) {
     }
 
     const component = orderedComponents[index];
+    const fixedTarget = fixedTargets.get(component.id);
     const candidates = shuffle(groups).filter((group) => {
+      if (fixedTarget !== undefined && group.id !== fixedTarget) {
+        return false;
+      }
+
       const fits = group.members.length + component.size <= group.targetSize;
       return fits && !hasSeparationConflict(group, component, separatedPairs);
     });
@@ -285,7 +356,7 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs) {
   return place(0) ? groups.map((group) => shuffle(group.members)) : null;
 }
 
-function validatePlan(plan, togetherRules, separateRules) {
+function validatePlan(plan, togetherRules, separateRules, fixedRules = []) {
   const groupIndexByName = new Map();
   const audit = [];
 
@@ -323,6 +394,17 @@ function validatePlan(plan, togetherRules, separateRules) {
     });
   }
 
+  for (const rule of fixedRules) {
+    const actualGroup = groupIndexByName.get(rule.member);
+    const passed = actualGroup === rule.groupIndex;
+
+    audit.push({
+      type: passed ? "ok" : "error",
+      title: passed ? "고정 배정 만족" : "고정 배정 실패",
+      detail: `${rule.member} → ${rule.groupIndex + 1}그룹`,
+    });
+  }
+
   return audit;
 }
 
@@ -339,6 +421,7 @@ function buildPlan(input) {
   }
 
   const separated = createSeparatedComponentPairs(components, input.separateRules);
+  const fixed = createFixedComponentTargets(components, input.fixedRules);
 
   if (separated.errors.length) {
     return {
@@ -351,14 +434,25 @@ function buildPlan(input) {
     };
   }
 
+  if (fixed.errors.length) {
+    return {
+      error: fixed.errors[0],
+      audit: fixed.errors.map((detail) => ({
+        type: "error",
+        title: "규칙 충돌",
+        detail,
+      })),
+    };
+  }
+
   for (let attempt = 0; attempt < input.attempts; attempt += 1) {
     const targetSizes = getTargetSizes(input.participants.length, input.groupCount);
-    const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs);
+    const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets);
 
     if (plan) {
       return {
         plan,
-        audit: validatePlan(plan, input.togetherRules, input.separateRules),
+        audit: validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules),
       };
     }
   }
@@ -383,7 +477,8 @@ function renderSummary(participantCount, groupCount, ruleCount) {
 
 function renderDraftStats() {
   const participants = uniqueItems(splitLines(participantsInput.value));
-  const rules = splitLines(togetherInput.value).length + splitLines(separateInput.value).length;
+  const rules =
+    splitLines(togetherInput.value).length + splitLines(separateInput.value).length + splitLines(fixedInput.value).length;
 
   participantCount.textContent = `${participants.length}명`;
   ruleCount.textContent = `${rules}개`;
@@ -471,8 +566,8 @@ function addHistory(plan, input) {
     plan: plan.map((group) => [...group]),
     participantCount: input.participants.length,
     groupCount: input.groupCount,
-    ruleCount: input.togetherRules.length + input.separateRules.length,
-    audit: validatePlan(plan, input.togetherRules, input.separateRules),
+    ruleCount: input.togetherRules.length + input.separateRules.length + input.fixedRules.length,
+    audit: validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules),
   });
 
   history = history.slice(0, 6);
@@ -528,7 +623,7 @@ function renderAudit(items, input = null) {
 
 function generate() {
   const input = getInputs();
-  const ruleCount = input.togetherRules.length + input.separateRules.length;
+  const ruleCount = input.togetherRules.length + input.separateRules.length + input.fixedRules.length;
   renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0, ruleCount);
   renderDraftStats();
 
@@ -590,6 +685,7 @@ function reset() {
   groupCountInput.value = "3";
   togetherInput.value = "";
   separateInput.value = "";
+  fixedInput.value = "";
   lastPlan = null;
   history = [];
   renderDraftStats();
@@ -605,7 +701,7 @@ generateButton.addEventListener("click", generate);
 shuffleButton.addEventListener("click", generate);
 resetButton.addEventListener("click", reset);
 copyButton.addEventListener("click", copyResult);
-[participantsInput, groupCountInput, togetherInput, separateInput].forEach((input) => {
+[participantsInput, groupCountInput, togetherInput, separateInput, fixedInput].forEach((input) => {
   input.addEventListener("input", () => {
     renderDraftStats();
     if (lastPlan) {
