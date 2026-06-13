@@ -7,6 +7,7 @@ const fixedInput = document.querySelector("#fixedInput");
 const attributesInput = document.querySelector("#attributesInput");
 const generateButton = document.querySelector("#generateButton");
 const resetButton = document.querySelector("#resetButton");
+const undoEditButton = document.querySelector("#undoEditButton");
 const clearLocksButton = document.querySelector("#clearLocksButton");
 const copyModeSelect = document.querySelector("#copyModeSelect");
 const copyButton = document.querySelector("#copyButton");
@@ -24,13 +25,17 @@ const summaryRules = document.querySelector("#summaryRules");
 const savedSettingsCount = document.querySelector("#savedSettingsCount");
 const savedSettingsList = document.querySelector("#savedSettingsList");
 const saveSettingsButton = document.querySelector("#saveSettingsButton");
+const updateSettingsButton = document.querySelector("#updateSettingsButton");
 const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput");
 
 let lastPlan = null;
 let lastAudit = [];
 let savedSettings = [];
+let activeSavedSettingId = null;
 let lockedAssignments = new Map();
+let editHistory = [];
 const DEFAULT_ATTEMPTS = 1800;
+const MAX_EDIT_HISTORY = 20;
 const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
 const LIST_DELIMITER_PATTERN = /[\t,;，、|]+/u;
 const WIDE_SPACE_PATTERN = /\s{2,}/u;
@@ -234,6 +239,27 @@ function parseRules(value, names, kind) {
   return { rules, errors };
 }
 
+function getIssueDetail(issue) {
+  return typeof issue === "string" ? issue : issue.detail;
+}
+
+function createAuditItemFromIssue(issue, fallbackTitle = "규칙 충돌") {
+  if (typeof issue === "string") {
+    return {
+      type: "error",
+      title: fallbackTitle,
+      detail: issue,
+    };
+  }
+
+  return {
+    type: "error",
+    title: issue.title || fallbackTitle,
+    detail: issue.detail,
+    hint: issue.hint,
+  };
+}
+
 function parseFixedRules(value, names, groupCount) {
   const known = new Set(names);
   const rules = [];
@@ -265,7 +291,7 @@ function parseFixedRules(value, names, groupCount) {
     const existingGroupIndex = fixedByMember.get(member);
 
     if (existingGroupIndex !== undefined && existingGroupIndex !== groupIndex) {
-      errors.push(`${member}의 고정 배정이 서로 충돌합니다.`);
+      errors.push(`${member}가 ${existingGroupIndex + 1}그룹과 ${groupIndex + 1}그룹에 동시에 고정되어 있습니다.`);
       return;
     }
 
@@ -431,7 +457,11 @@ function createSeparatedComponentPairs(components, separateRules) {
         const rightId = componentByName.get(rule.members[right]);
 
         if (leftId === rightId) {
-          errors.push(`${rule.members[left]}와 ${rule.members[right]}는 함께 배정과 분리 배정이 충돌합니다.`);
+          errors.push({
+            title: "함께/분리 충돌",
+            detail: `${rule.members[left]}와 ${rule.members[right]}가 함께 배정과 분리 배정에 동시에 들어 있습니다.`,
+            hint: "둘 중 하나의 규칙에서 이 조합을 지우세요.",
+          });
           continue;
         }
 
@@ -460,7 +490,11 @@ function createFixedComponentTargets(components, fixedRules) {
 
     if (existingTarget !== undefined && existingTarget !== rule.groupIndex) {
       const component = components.find((item) => item.id === componentId);
-      errors.push(`${component.members.join(", ")}의 고정 배정이 서로 충돌합니다.`);
+      errors.push({
+        title: "고정 배정 충돌",
+        detail: `${component.members.join(", ")} 묶음이 ${existingTarget + 1}그룹과 ${rule.groupIndex + 1}그룹에 동시에 고정되어 있습니다.`,
+        hint: "같이 묶인 멤버는 같은 그룹 번호로 고정하세요.",
+      });
       continue;
     }
 
@@ -722,23 +756,15 @@ function buildPlan(input) {
 
   if (separated.errors.length) {
     return {
-      error: separated.errors[0],
-      audit: separated.errors.map((detail) => ({
-        type: "error",
-        title: "규칙 충돌",
-        detail,
-      })),
+      error: getIssueDetail(separated.errors[0]),
+      audit: separated.errors.map((issue) => createAuditItemFromIssue(issue)),
     };
   }
 
   if (fixed.errors.length) {
     return {
-      error: fixed.errors[0],
-      audit: fixed.errors.map((detail) => ({
-        type: "error",
-        title: "규칙 충돌",
-        detail,
-      })),
+      error: getIssueDetail(fixed.errors[0]),
+      audit: fixed.errors.map((issue) => createAuditItemFromIssue(issue)),
     };
   }
 
@@ -845,6 +871,70 @@ function getValidLockedRules(participants, groupCount) {
   return { lockedRules, nextLocks };
 }
 
+function clonePlan(plan) {
+  return plan ? plan.map((group) => [...group]) : null;
+}
+
+function createResultSnapshot() {
+  if (!lastPlan) {
+    return null;
+  }
+
+  return {
+    plan: clonePlan(lastPlan),
+    locks: [...lockedAssignments.entries()],
+  };
+}
+
+function updateUndoButtonState() {
+  undoEditButton.disabled = !lastPlan || editHistory.length === 0;
+}
+
+function clearEditHistory() {
+  editHistory = [];
+  updateUndoButtonState();
+}
+
+function pushEditHistory() {
+  const snapshot = createResultSnapshot();
+
+  if (!snapshot) {
+    return;
+  }
+
+  editHistory.push(snapshot);
+
+  if (editHistory.length > MAX_EDIT_HISTORY) {
+    editHistory.shift();
+  }
+
+  updateUndoButtonState();
+}
+
+function undoLastEdit() {
+  const snapshot = editHistory.pop();
+
+  if (!snapshot) {
+    setStatus("되돌릴 수정이 없습니다.", "error");
+    updateUndoButtonState();
+    return;
+  }
+
+  lastPlan = clonePlan(snapshot.plan);
+  lockedAssignments = new Map(snapshot.locks);
+  renderGroups(lastPlan);
+  refreshAuditForCurrentPlan([
+    {
+      type: "warning",
+      title: "되돌리기",
+      detail: "직전 결과 수정을 되돌렸습니다.",
+    },
+  ]);
+  setResultState("수정됨");
+  setStatus("직전 결과 수정을 되돌렸습니다.", "success");
+  updateUndoButtonState();
+}
+
 function refreshAuditForCurrentPlan(extraItems = []) {
   if (!lastPlan) {
     return;
@@ -884,8 +974,10 @@ function toggleMemberLock(member, groupIndex) {
   const wasLocked = lockedAssignments.get(member) === groupIndex;
 
   if (wasLocked) {
+    pushEditHistory();
     lockedAssignments.delete(member);
   } else {
+    pushEditHistory();
     lockedAssignments.set(member, groupIndex);
   }
 
@@ -923,6 +1015,7 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
     return;
   }
 
+  pushEditHistory();
   source.splice(memberIndex, 1);
   target.push(member);
   lockedAssignments.set(member, toGroupIndex);
@@ -945,6 +1038,7 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
 function renderGroups(plan) {
   groupsGrid.innerHTML = "";
   emptyState.classList.toggle("is-hidden", Boolean(plan));
+  updateUndoButtonState();
 
   if (!plan) {
     return;
@@ -1039,6 +1133,7 @@ function renderSavedSettings() {
     const meta = getSettingsMeta(item.settings);
 
     row.className = "saved-item";
+    row.classList.toggle("is-active", item.id === activeSavedSettingId);
     loadButton.className = "saved-load";
     loadButton.type = "button";
     renameButton.className = "saved-rename";
@@ -1070,32 +1165,70 @@ function saveCurrentSettings() {
     return;
   }
 
-  savedSettings.unshift({
+  const item = {
     id: Date.now() + Math.random(),
     name,
     settings,
-  });
+  };
+
+  savedSettings.unshift(item);
 
   savedSettings = savedSettings.slice(0, 12);
+  activeSavedSettingId = item.id;
   savedSettingsNameInput.value = "";
   persistSavedSettings();
   renderSavedSettings();
   setStatus("현재 입력값을 저장했습니다.", "success");
 }
 
+function updateCurrentSavedSetting() {
+  const item = savedSettings.find((savedItem) => savedItem.id === activeSavedSettingId);
+
+  if (!item) {
+    setStatus("갱신할 저장값을 먼저 불러오세요.", "error");
+    return;
+  }
+
+  const settings = getDraftSettings();
+  const meta = getSettingsMeta(settings);
+
+  if (meta.participantCount === 0 && meta.ruleCount === 0) {
+    setStatus("갱신할 입력값이 없습니다.", "error");
+    return;
+  }
+
+  const nextName = savedSettingsNameInput.value.trim();
+
+  if (nextName) {
+    item.name = nextName;
+    savedSettingsNameInput.value = "";
+  }
+
+  item.settings = settings;
+  persistSavedSettings();
+  renderSavedSettings();
+  setStatus("저장값을 갱신했습니다.", "success");
+}
+
 function loadSavedSetting(item) {
   applyDraftSettings(item.settings);
+  activeSavedSettingId = item.id;
   lastPlan = null;
   lockedAssignments = new Map();
+  clearEditHistory();
   renderDraftStats();
   renderGroups(null);
   renderAudit([]);
   setResultState("대기");
+  renderSavedSettings();
   setStatus("저장값을 불러왔습니다.", "success");
 }
 
 function deleteSavedSetting(id) {
   savedSettings = savedSettings.filter((item) => item.id !== id);
+  if (activeSavedSettingId === id) {
+    activeSavedSettingId = null;
+  }
   persistSavedSettings();
   renderSavedSettings();
   setStatus("저장값을 삭제했습니다.", "success");
@@ -1259,6 +1392,7 @@ function generate() {
   if (input.errors.length) {
     lastPlan = null;
     lastAudit = [];
+    clearEditHistory();
     renderGroups(null);
     renderAudit(
       input.errors.map((detail) => ({
@@ -1278,6 +1412,7 @@ function generate() {
   if (result.error) {
     lastPlan = null;
     lastAudit = result.audit;
+    clearEditHistory();
     renderGroups(null);
     renderAudit(result.audit, input);
     setResultState("실패", "error");
@@ -1287,10 +1422,44 @@ function generate() {
 
   lastPlan = result.plan;
   lastAudit = result.audit;
+  clearEditHistory();
   renderGroups(result.plan);
   renderAudit(result.audit, input);
   setResultState("완료", "ready");
   setStatus(`${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`, "success");
+}
+
+function formatCopyResult(plan, groupNames, auditItems, mode) {
+  const groupedText = plan
+    .map((group, index) => `${groupNames[index]}\n${group.map((member) => `- ${member}`).join("\n")}`)
+    .join("\n\n");
+  const namesOnlyText = plan.map((group) => group.join("\n")).join("\n\n");
+  const numberedText = plan.map((group, index) => `${index + 1}. ${groupNames[index]}: ${group.join(", ")}`).join("\n");
+  const chatText = plan.map((group, index) => `[${groupNames[index]}] ${group.join(", ")}`).join("\n");
+  const compactText = plan.map((group, index) => `${groupNames[index]}: ${group.join(", ")}`).join(" / ");
+  const auditText = auditItems.map((item) => `- ${item.title}: ${item.detail}`).join("\n");
+
+  if (mode === "names") {
+    return namesOnlyText;
+  }
+
+  if (mode === "numbered") {
+    return numberedText;
+  }
+
+  if (mode === "chat") {
+    return chatText;
+  }
+
+  if (mode === "compact") {
+    return compactText;
+  }
+
+  if (mode === "audit") {
+    return `${groupedText}\n\n검토\n${auditText || "- 검토 없음"}`;
+  }
+
+  return groupedText;
 }
 
 async function copyResult() {
@@ -1300,14 +1469,7 @@ async function copyResult() {
   }
 
   const groupNames = getGroupNames(lastPlan.length);
-  const groupedText = lastPlan
-    .map((group, index) => `${groupNames[index]}\n${group.map((member) => `- ${member}`).join("\n")}`)
-    .join("\n\n");
-  const namesOnlyText = lastPlan.map((group) => group.join("\n")).join("\n\n");
-  const auditText = lastAudit.map((item) => `- ${item.title}: ${item.detail}`).join("\n");
-  const mode = copyModeSelect.value;
-  const text =
-    mode === "names" ? namesOnlyText : mode === "audit" ? `${groupedText}\n\n검토\n${auditText || "- 검토 없음"}` : groupedText;
+  const text = formatCopyResult(lastPlan, groupNames, lastAudit, copyModeSelect.value);
 
   try {
     await navigator.clipboard.writeText(text);
@@ -1321,7 +1483,9 @@ function reset() {
   applyDraftSettings(null);
   lastPlan = null;
   lastAudit = [];
+  activeSavedSettingId = null;
   lockedAssignments = new Map();
+  clearEditHistory();
   savedSettingsNameInput.value = "";
   renderDraftStats();
   renderGroups(null);
@@ -1337,8 +1501,16 @@ function clearLockedAssignments() {
     return;
   }
 
+  pushEditHistory();
   lockedAssignments = new Map();
   renderGroups(lastPlan);
+  refreshAuditForCurrentPlan([
+    {
+      type: "warning",
+      title: "고정 해제",
+      detail: "모든 결과 고정을 해제했습니다.",
+    },
+  ]);
   setResultState("수정됨");
   setStatus("고정된 멤버를 모두 해제했습니다.", "success");
 }
@@ -1350,9 +1522,11 @@ function boot() {
 
 generateButton.addEventListener("click", generate);
 resetButton.addEventListener("click", () => reset());
+undoEditButton.addEventListener("click", undoLastEdit);
 clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
 saveSettingsButton.addEventListener("click", saveCurrentSettings);
+updateSettingsButton.addEventListener("click", updateCurrentSavedSetting);
 [participantsInput, groupCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {
   input.addEventListener("input", () => {
     renderDraftStats();

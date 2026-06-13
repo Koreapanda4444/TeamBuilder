@@ -91,10 +91,14 @@
               <span id="resultState">대기</span>
             </div>
             <div class="result-actions">
+              <button class="secondary-button compact" id="undoEditButton" type="button" disabled>되돌리기</button>
               <button class="secondary-button compact" id="clearLocksButton" type="button">고정 해제</button>
               <select class="copy-mode" id="copyModeSelect" aria-label="복사 형식">
                 <option value="grouped">그룹명</option>
                 <option value="names">이름만</option>
+                <option value="numbered">번호형</option>
+                <option value="chat">채팅형</option>
+                <option value="compact">한줄</option>
                 <option value="audit">검토 포함</option>
               </select>
               <button class="secondary-button compact" id="copyButton" type="button">복사</button>
@@ -137,6 +141,7 @@
               <div class="panel-actions">
                 <span id="savedSettingsCount">0</span>
                 <button class="mini-button" id="saveSettingsButton" type="button" aria-label="현재 입력 저장">+</button>
+                <button class="mini-button text-mini-button" id="updateSettingsButton" type="button" aria-label="불러온 저장값 갱신">갱신</button>
               </div>
             </div>
             <input class="saved-name-input" id="savedSettingsNameInput" type="text" aria-label="저장값 이름" placeholder="저장값 이름" />

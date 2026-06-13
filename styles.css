@@ -345,6 +345,13 @@ input[type="text"]:focus {
   background: var(--surface-soft);
 }
 
+.secondary-button:disabled,
+.ghost-button:disabled,
+.mini-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .mini-button {
   display: grid;
   place-items: center;
@@ -353,6 +360,11 @@ input[type="text"]:focus {
   padding: 0;
   font-size: 17px;
   line-height: 1;
+}
+
+.text-mini-button {
+  width: 44px;
+  font-size: 12px;
 }
 
 .secondary-button.compact {
@@ -704,6 +716,11 @@ input[type="text"]:focus {
   white-space: nowrap;
 }
 
+.saved-item.is-active .saved-load {
+  border-color: rgba(20, 107, 95, 0.45);
+  background: #edf7f4;
+}
+
 .saved-delete {
   min-width: 44px;
   padding: 0 8px;
@@ -793,7 +810,7 @@ input[type="text"]:focus {
 
   .result-toolbar > .result-actions {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(96px, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     width: 100%;
   }
 
@@ -828,6 +845,10 @@ input[type="text"]:focus {
 
   .groups-grid {
     grid-template-columns: 1fr;
+  }
+
+  .result-toolbar > .result-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .member-list li {
