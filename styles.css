@@ -188,7 +188,7 @@ h3 {
 }
 
 .assignment-grid {
-  grid-template-columns: 92px minmax(0, 1fr);
+  grid-template-columns: 80px 80px minmax(0, 1fr);
 }
 
 .rule-grid {

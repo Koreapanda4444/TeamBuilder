@@ -48,6 +48,11 @@
                 <span class="sr-only" id="groupCountHelp">2개 이상의 그룹 수를 입력합니다.</span>
               </label>
               <label class="field">
+                <span>돌리기</span>
+                <input id="rollCountInput" type="number" min="1" max="30" value="1" aria-describedby="rollCountHelp" />
+                <span class="sr-only" id="rollCountHelp">여러 후보를 만든 뒤 가장 나은 결과를 반영합니다.</span>
+              </label>
+              <label class="field">
                 <span>그룹 이름</span>
                 <textarea id="groupNamesInput" rows="2" spellcheck="false" placeholder="Alpha&#10;Beta" aria-describedby="groupNamesHelp"></textarea>
                 <span class="sr-only" id="groupNamesHelp">그룹 이름을 줄마다 하나씩 입력합니다.</span>

@@ -1,5 +1,6 @@
 const participantsInput = document.querySelector("#participantsInput");
 const groupCountInput = document.querySelector("#groupCountInput");
+const rollCountInput = document.querySelector("#rollCountInput");
 const groupNamesInput = document.querySelector("#groupNamesInput");
 const togetherInput = document.querySelector("#togetherInput");
 const separateInput = document.querySelector("#separateInput");
@@ -35,6 +36,8 @@ let activeSavedSettingId = null;
 let lockedAssignments = new Map();
 let editHistory = [];
 const DEFAULT_ATTEMPTS = 1800;
+const DEFAULT_ROLL_COUNT = 1;
+const MAX_ROLL_COUNT = 30;
 const MAX_EDIT_HISTORY = 20;
 const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
 const LIST_DELIMITER_PATTERN = /[\t,;，、|]+/u;
@@ -131,7 +134,7 @@ function setResultState(text, type = "default") {
 }
 
 function getInputFields() {
-  return [participantsInput, groupCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput];
+  return [participantsInput, groupCountInput, rollCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput];
 }
 
 function clearFieldValidity() {
@@ -152,6 +155,10 @@ function markInvalidFields(errors) {
 
     if (error.includes("그룹 수")) {
       markFieldInvalid(groupCountInput);
+    }
+
+    if (error.includes("돌리기")) {
+      markFieldInvalid(rollCountInput);
     }
 
     if (error.includes("그룹 이름")) {
@@ -192,6 +199,7 @@ function getDraftSettings() {
   return {
     participants: participantsInput.value,
     groupCount: groupCountInput.value,
+    rollCount: rollCountInput.value,
     groupNames: groupNamesInput.value,
     together: togetherInput.value,
     separate: separateInput.value,
@@ -203,6 +211,7 @@ function getDraftSettings() {
 function applyDraftSettings(settings) {
   participantsInput.value = settings?.participants || "";
   groupCountInput.value = settings?.groupCount || "3";
+  rollCountInput.value = settings?.rollCount || String(DEFAULT_ROLL_COUNT);
   groupNamesInput.value = settings?.groupNames || "";
   togetherInput.value = settings?.together || "";
   separateInput.value = settings?.separate || "";
@@ -447,6 +456,7 @@ function getInputs() {
   const participants = uniqueItems(parsedParticipants);
   const duplicateCount = parsedParticipants.length - participants.length;
   const groupCount = Number(groupCountInput.value);
+  const rollCount = Number(rollCountInput.value || DEFAULT_ROLL_COUNT);
   const attempts = DEFAULT_ATTEMPTS;
   const errors = [];
 
@@ -460,6 +470,10 @@ function getInputs() {
 
   if (groupCount > participants.length) {
     errors.push("그룹 수는 참가자 수보다 많을 수 없습니다.");
+  }
+
+  if (!Number.isInteger(rollCount) || rollCount < 1 || rollCount > MAX_ROLL_COUNT) {
+    errors.push(`돌리기는 1부터 ${MAX_ROLL_COUNT} 사이로 입력해야 합니다.`);
   }
 
   if (!Number.isInteger(attempts) || attempts < 100) {
@@ -477,6 +491,7 @@ function getInputs() {
   return {
     participants,
     groupCount,
+    rollCount,
     groupNames: getGroupNames(groupCount),
     attempts,
     togetherRules: together.rules,
@@ -900,6 +915,7 @@ function buildPlan(input) {
   if (bestPlan) {
     return {
       plan: bestPlan,
+      score: bestScore,
       audit: validatePlan(bestPlan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules),
     };
   }
@@ -914,6 +930,62 @@ function buildPlan(input) {
       },
     ],
   };
+}
+
+function buildRolledPlan(input) {
+  const rollCount = input.rollCount || DEFAULT_ROLL_COUNT;
+
+  if (rollCount <= 1) {
+    return buildPlan(input);
+  }
+
+  let bestResult = null;
+  let successCount = 0;
+  let lastError = null;
+  const attemptsPerRoll = Math.max(300, Math.floor(input.attempts / Math.min(rollCount, 4)));
+  const rollInput = { ...input, attempts: attemptsPerRoll };
+
+  for (let rollIndex = 1; rollIndex <= rollCount; rollIndex += 1) {
+    const result = buildPlan(rollInput);
+
+    if (result.error) {
+      lastError = result;
+      continue;
+    }
+
+    successCount += 1;
+    const score = Number.isFinite(result.score) ? result.score : getAttributeBalanceScore(result.plan, input.attributeRules);
+    const shouldReplace =
+      !bestResult || score < bestResult.score || (score === bestResult.score && Math.random() < 0.5);
+
+    if (shouldReplace) {
+      bestResult = {
+        ...result,
+        score,
+        selectedRoll: rollIndex,
+      };
+    }
+  }
+
+  if (bestResult) {
+    const detail = `${rollCount}회 중 ${successCount}회 생성, ${bestResult.selectedRoll}번째 결과 반영`;
+    const hint = bestResult.score === 0 ? "가장 균형이 맞는 결과를 선택했습니다." : "속성 차이가 가장 작은 결과를 선택했습니다.";
+
+    return {
+      ...bestResult,
+      audit: [
+        {
+          type: "ok",
+          title: "돌리기",
+          detail,
+          hint,
+        },
+        ...bestResult.audit,
+      ],
+    };
+  }
+
+  return lastError || buildPlan(input);
 }
 
 function renderSummary(participantCount, groupCount, ruleCount) {
@@ -1213,8 +1285,9 @@ function getSettingsMeta(settings) {
     splitLines(settings.fixed).length +
     splitLines(settings.attributes || "").length;
   const groupCount = Number(settings.groupCount) || 0;
+  const rollCount = Number(settings.rollCount) || DEFAULT_ROLL_COUNT;
 
-  return { participantCount, ruleCount, groupCount };
+  return { participantCount, ruleCount, groupCount, rollCount };
 }
 
 function renderSavedSettings() {
@@ -1249,7 +1322,7 @@ function renderSavedSettings() {
     deleteButton.type = "button";
 
     title.textContent = item.name || `${index + 1}. ${meta.groupCount}그룹`;
-    detail.textContent = `${meta.participantCount}명 / 규칙 ${meta.ruleCount}개`;
+    detail.textContent = `${meta.participantCount}명 / ${meta.rollCount}회 / 규칙 ${meta.ruleCount}개`;
     renameButton.textContent = "수정";
     deleteButton.textContent = "삭제";
     loadButton.setAttribute("aria-label", `${title.textContent} 불러오기`);
@@ -1399,6 +1472,10 @@ function getAuditHint(item) {
     return "그룹 수를 2 이상으로 입력하세요.";
   }
 
+  if (text.includes("돌리기")) {
+    return "높게 잡을수록 더 오래 걸릴 수 있습니다.";
+  }
+
   if (text.includes("참가자 수보다")) {
     return "그룹 수를 줄이거나 참가자를 더 추가하세요.";
   }
@@ -1526,7 +1603,7 @@ function generate() {
     return;
   }
 
-  const result = buildPlan(input);
+  const result = buildRolledPlan(input);
 
   if (result.error) {
     lastPlan = null;
@@ -1547,7 +1624,12 @@ function generate() {
   renderGroups(result.plan);
   renderAudit(result.audit, input);
   setResultState("완료", "ready");
-  setStatus(`${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`, "success");
+  setStatus(
+    input.rollCount > 1
+      ? `${input.rollCount}회 돌려 ${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`
+      : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
+    "success",
+  );
 }
 
 function formatCopyResult(plan, groupNames, auditItems, mode) {
@@ -1680,6 +1762,7 @@ updateSettingsButton.addEventListener("click", updateCurrentSavedSetting);
   input.addEventListener("keydown", handleInputKeydown);
 });
 groupCountInput.addEventListener("keydown", handleSingleLineKeydown);
+rollCountInput.addEventListener("keydown", handleSingleLineKeydown);
 savedSettingsNameInput.addEventListener("keydown", handleSavedNameKeydown);
 getInputFields().forEach((input) => {
   input.addEventListener("input", () => {
