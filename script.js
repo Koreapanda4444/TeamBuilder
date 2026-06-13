@@ -89,6 +89,24 @@ function uniqueItems(items) {
   return result;
 }
 
+function duplicateItems(items) {
+  const seen = new Set();
+  const duplicates = [];
+
+  for (const item of items) {
+    const key = item.toLocaleLowerCase();
+
+    if (seen.has(key) && !duplicates.some((duplicate) => duplicate.toLocaleLowerCase() === key)) {
+      duplicates.push(item);
+      continue;
+    }
+
+    seen.add(key);
+  }
+
+  return duplicates;
+}
+
 function shuffle(items) {
   const copy = [...items];
 
@@ -110,6 +128,52 @@ function setResultState(text, type = "default") {
   resultState.textContent = text;
   resultState.classList.toggle("is-ready", type === "ready");
   resultState.classList.toggle("is-error", type === "error");
+}
+
+function getInputFields() {
+  return [participantsInput, groupCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput];
+}
+
+function clearFieldValidity() {
+  getInputFields().forEach((field) => field.removeAttribute("aria-invalid"));
+}
+
+function markFieldInvalid(field) {
+  field.setAttribute("aria-invalid", "true");
+}
+
+function markInvalidFields(errors) {
+  clearFieldValidity();
+
+  errors.map(String).forEach((error) => {
+    if (error.includes("참가자") || error.includes("명단")) {
+      markFieldInvalid(participantsInput);
+    }
+
+    if (error.includes("그룹 수")) {
+      markFieldInvalid(groupCountInput);
+    }
+
+    if (error.includes("그룹 이름")) {
+      markFieldInvalid(groupNamesInput);
+    }
+
+    if (error.includes("함께")) {
+      markFieldInvalid(togetherInput);
+    }
+
+    if (error.includes("분리")) {
+      markFieldInvalid(separateInput);
+    }
+
+    if (error.includes("고정") || error.includes("그룹 번호")) {
+      markFieldInvalid(fixedInput);
+    }
+
+    if (error.includes("속성")) {
+      markFieldInvalid(attributesInput);
+    }
+  });
 }
 
 function getStorage() {
@@ -218,9 +282,17 @@ function parseRules(value, names, kind) {
   const known = new Set(names);
   const rules = [];
   const errors = [];
+  const seenRules = new Set();
 
   splitLines(value).forEach((line, lineIndex) => {
-    const members = uniqueItems(parseRuleLine(line));
+    const parsedMembers = parseRuleLine(line);
+    const duplicateMembers = duplicateItems(parsedMembers);
+    const members = uniqueItems(parsedMembers);
+
+    if (duplicateMembers.length) {
+      errors.push(`${kind} ${lineIndex + 1}번째 줄에 같은 이름이 반복되어 있습니다: ${duplicateMembers.join(", ")}`);
+      return;
+    }
 
     if (members.length < 2) {
       errors.push(`${kind} ${lineIndex + 1}번째 줄은 이름을 2개 이상 입력해야 합니다.`);
@@ -233,6 +305,13 @@ function parseRules(value, names, kind) {
       return;
     }
 
+    const ruleKey = members.map((member) => member.toLocaleLowerCase()).sort().join("\u0001");
+    if (seenRules.has(ruleKey)) {
+      errors.push(`${kind} ${lineIndex + 1}번째 줄은 앞의 규칙과 중복됩니다: ${members.join(", ")}`);
+      return;
+    }
+
+    seenRules.add(ruleKey);
     rules.push({ members, raw: line });
   });
 
@@ -290,8 +369,12 @@ function parseFixedRules(value, names, groupCount) {
     const groupIndex = groupNumber - 1;
     const existingGroupIndex = fixedByMember.get(member);
 
-    if (existingGroupIndex !== undefined && existingGroupIndex !== groupIndex) {
-      errors.push(`${member}가 ${existingGroupIndex + 1}그룹과 ${groupIndex + 1}그룹에 동시에 고정되어 있습니다.`);
+    if (existingGroupIndex !== undefined) {
+      if (existingGroupIndex === groupIndex) {
+        errors.push(`고정 배정 ${lineIndex + 1}번째 줄은 ${member}를 이미 ${groupNumber}그룹에 고정했습니다.`);
+      } else {
+        errors.push(`${member}가 ${existingGroupIndex + 1}그룹과 ${groupIndex + 1}그룹에 동시에 고정되어 있습니다.`);
+      }
       return;
     }
 
@@ -306,6 +389,7 @@ function parseAttributeRules(value, names) {
   const known = new Set(names);
   const rules = [];
   const errors = [];
+  const attributeByMember = new Map();
 
   splitLines(value).forEach((line, lineIndex) => {
     const parsed = parseMemberValueLine(line, names);
@@ -328,6 +412,12 @@ function parseAttributeRules(value, names) {
       return;
     }
 
+    if (attributeByMember.has(member)) {
+      errors.push(`속성 균형 ${lineIndex + 1}번째 줄은 ${member}의 값이 이미 입력되어 있습니다.`);
+      return;
+    }
+
+    attributeByMember.set(member, value);
     rules.push({ member, value, raw: line });
   });
 
@@ -339,6 +429,17 @@ function getGroupNames(groupCount) {
   const count = Number.isInteger(groupCount) && groupCount > 0 ? groupCount : 0;
 
   return Array.from({ length: count }, (_, index) => names[index] || `${index + 1}그룹`);
+}
+
+function validateGroupNames(groupCount) {
+  if (!Number.isInteger(groupCount) || groupCount < 1) {
+    return [];
+  }
+
+  const names = getGroupNames(groupCount);
+  const duplicates = duplicateItems(names);
+
+  return duplicates.length ? [`그룹 이름이 중복되어 있습니다: ${duplicates.join(", ")}`] : [];
 }
 
 function getInputs() {
@@ -369,8 +470,9 @@ function getInputs() {
   const separate = parseRules(separateInput.value, participants, "분리 배정");
   const fixed = parseFixedRules(fixedInput.value, participants, groupCount);
   const attributes = parseAttributeRules(attributesInput.value, participants);
+  const groupNameErrors = validateGroupNames(groupCount);
 
-  errors.push(...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
+  errors.push(...groupNameErrors, ...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
 
   return {
     participants,
@@ -1057,7 +1159,9 @@ function renderGroups(plan) {
 
     title.textContent = groupNames[index];
     count.textContent = `${members.length}명`;
+    card.setAttribute("aria-label", `${groupNames[index]}, ${members.length}명`);
     list.className = "member-list";
+    list.setAttribute("role", "list");
 
     members.forEach((member) => {
       const item = document.createElement("li");
@@ -1070,7 +1174,7 @@ function renderGroups(plan) {
       name.textContent = member;
       actions.className = "member-actions";
       moveSelect.className = "member-move-select";
-      moveSelect.setAttribute("aria-label", `${member} 이동`);
+      moveSelect.setAttribute("aria-label", `${member} 이동할 그룹`);
 
       groupNames.forEach((groupName, groupIndex) => {
         const option = document.createElement("option");
@@ -1086,6 +1190,8 @@ function renderGroups(plan) {
       lockButton.classList.toggle("is-locked", locked);
       lockButton.type = "button";
       lockButton.textContent = locked ? "해제" : "고정";
+      lockButton.setAttribute("aria-pressed", String(locked));
+      lockButton.setAttribute("aria-label", locked ? `${member} 고정 해제` : `${member} 현재 그룹에 고정`);
       lockButton.addEventListener("click", () => toggleMemberLock(member, index));
 
       actions.append(moveSelect, lockButton);
@@ -1114,6 +1220,7 @@ function getSettingsMeta(settings) {
 function renderSavedSettings() {
   savedSettingsCount.textContent = String(savedSettings.length);
   savedSettingsList.innerHTML = "";
+  updateSettingsButton.disabled = !savedSettings.some((item) => item.id === activeSavedSettingId);
 
   if (!savedSettings.length) {
     const empty = document.createElement("div");
@@ -1145,6 +1252,9 @@ function renderSavedSettings() {
     detail.textContent = `${meta.participantCount}명 / 규칙 ${meta.ruleCount}개`;
     renameButton.textContent = "수정";
     deleteButton.textContent = "삭제";
+    loadButton.setAttribute("aria-label", `${title.textContent} 불러오기`);
+    renameButton.setAttribute("aria-label", `${title.textContent} 이름 수정`);
+    deleteButton.setAttribute("aria-label", `${title.textContent} 삭제`);
 
     loadButton.append(title, detail);
     loadButton.addEventListener("click", () => loadSavedSetting(item));
@@ -1301,6 +1411,14 @@ function getAuditHint(item) {
     return "명단과 규칙의 표기를 같게 맞추세요.";
   }
 
+  if (text.includes("반복") || text.includes("중복됩니다") || text.includes("이미 입력")) {
+    return "같은 이름이나 같은 줄을 한 번만 남기세요.";
+  }
+
+  if (text.includes("그룹 이름이 중복")) {
+    return "각 그룹 이름을 서로 다르게 입력하세요.";
+  }
+
   if (text.includes("그룹 번호") || text.includes("범위를 벗어")) {
     return "고정 배정은 A=1처럼 1부터 현재 그룹 수 사이의 번호를 쓰세요.";
   }
@@ -1392,6 +1510,7 @@ function generate() {
   if (input.errors.length) {
     lastPlan = null;
     lastAudit = [];
+    markInvalidFields(input.errors);
     clearEditHistory();
     renderGroups(null);
     renderAudit(
@@ -1412,6 +1531,7 @@ function generate() {
   if (result.error) {
     lastPlan = null;
     lastAudit = result.audit;
+    markInvalidFields([result.error]);
     clearEditHistory();
     renderGroups(null);
     renderAudit(result.audit, input);
@@ -1422,6 +1542,7 @@ function generate() {
 
   lastPlan = result.plan;
   lastAudit = result.audit;
+  clearFieldValidity();
   clearEditHistory();
   renderGroups(result.plan);
   renderAudit(result.audit, input);
@@ -1520,6 +1641,34 @@ function boot() {
   reset();
 }
 
+function handleInputKeydown(event) {
+  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
+    event.preventDefault();
+    generate();
+  }
+}
+
+function handleSingleLineKeydown(event) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    generate();
+  }
+}
+
+function handleSavedNameKeydown(event) {
+  if (event.key !== "Enter") {
+    return;
+  }
+
+  event.preventDefault();
+
+  if (activeSavedSettingId) {
+    updateCurrentSavedSetting();
+  } else {
+    saveCurrentSettings();
+  }
+}
+
 generateButton.addEventListener("click", generate);
 resetButton.addEventListener("click", () => reset());
 undoEditButton.addEventListener("click", undoLastEdit);
@@ -1527,8 +1676,14 @@ clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
 saveSettingsButton.addEventListener("click", saveCurrentSettings);
 updateSettingsButton.addEventListener("click", updateCurrentSavedSetting);
-[participantsInput, groupCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {
+[participantsInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {
+  input.addEventListener("keydown", handleInputKeydown);
+});
+groupCountInput.addEventListener("keydown", handleSingleLineKeydown);
+savedSettingsNameInput.addEventListener("keydown", handleSavedNameKeydown);
+getInputFields().forEach((input) => {
   input.addEventListener("input", () => {
+    input.removeAttribute("aria-invalid");
     renderDraftStats();
     if (lastPlan) {
       if (input === groupNamesInput) {

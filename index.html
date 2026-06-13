@@ -31,9 +31,10 @@
             </div>
             <label class="field">
               <span>참가자</span>
-              <textarea id="participantsInput" rows="8" spellcheck="false" placeholder="A&#10;B&#10;C&#10;D"></textarea>
+              <textarea id="participantsInput" rows="8" spellcheck="false" placeholder="A&#10;B&#10;C&#10;D" aria-describedby="participantsHelp"></textarea>
+              <span class="sr-only" id="participantsHelp">줄바꿈, 쉼표, 탭으로 여러 참가자를 입력할 수 있습니다.</span>
             </label>
-            <div class="preview-list" id="participantPreview"></div>
+            <div class="preview-list" id="participantPreview" aria-label="참가자 미리보기"></div>
           </section>
 
           <section class="block compact-block">
@@ -43,11 +44,13 @@
             <div class="assignment-grid">
               <label class="field">
                 <span>그룹 수</span>
-                <input id="groupCountInput" type="number" min="2" max="24" value="3" />
+                <input id="groupCountInput" type="number" min="2" max="24" value="3" aria-describedby="groupCountHelp" />
+                <span class="sr-only" id="groupCountHelp">2개 이상의 그룹 수를 입력합니다.</span>
               </label>
               <label class="field">
                 <span>그룹 이름</span>
-                <textarea id="groupNamesInput" rows="2" spellcheck="false" placeholder="Alpha&#10;Beta"></textarea>
+                <textarea id="groupNamesInput" rows="2" spellcheck="false" placeholder="Alpha&#10;Beta" aria-describedby="groupNamesHelp"></textarea>
+                <span class="sr-only" id="groupNamesHelp">그룹 이름을 줄마다 하나씩 입력합니다.</span>
               </label>
             </div>
           </section>
@@ -60,19 +63,23 @@
             <div class="rule-grid">
               <label class="field">
                 <span>함께 배정</span>
-                <textarea id="togetherInput" rows="2" spellcheck="false" placeholder="A-B"></textarea>
+                <textarea id="togetherInput" rows="2" spellcheck="false" placeholder="A-B" aria-describedby="togetherHelp"></textarea>
+                <span class="sr-only" id="togetherHelp">같은 그룹에 둘 이름을 한 줄에 입력합니다.</span>
               </label>
               <label class="field">
                 <span>분리 배정</span>
-                <textarea id="separateInput" rows="2" spellcheck="false" placeholder="A-B"></textarea>
+                <textarea id="separateInput" rows="2" spellcheck="false" placeholder="A-B" aria-describedby="separateHelp"></textarea>
+                <span class="sr-only" id="separateHelp">다른 그룹에 둘 이름을 한 줄에 입력합니다.</span>
               </label>
               <label class="field">
                 <span>고정 배정</span>
-                <textarea id="fixedInput" rows="2" spellcheck="false" placeholder="A=1"></textarea>
+                <textarea id="fixedInput" rows="2" spellcheck="false" placeholder="A=1" aria-describedby="fixedHelp"></textarea>
+                <span class="sr-only" id="fixedHelp">이름과 그룹 번호를 함께 입력합니다.</span>
               </label>
               <label class="field">
                 <span>속성 균형</span>
-                <textarea id="attributesInput" rows="2" spellcheck="false" placeholder="A=X"></textarea>
+                <textarea id="attributesInput" rows="2" spellcheck="false" placeholder="A=X" aria-describedby="attributesHelp"></textarea>
+                <span class="sr-only" id="attributesHelp">이름과 속성 값을 함께 입력합니다.</span>
               </label>
             </div>
           </section>
@@ -81,14 +88,14 @@
             <button class="primary-button" id="generateButton" type="button">생성</button>
           </div>
 
-          <p class="status-message" id="statusMessage" role="status" aria-live="polite"></p>
+          <p class="status-message" id="statusMessage" role="status" aria-live="polite" aria-atomic="true"></p>
         </aside>
 
         <section class="panel result-panel" aria-label="결과">
           <div class="result-toolbar">
             <div>
               <h2>결과</h2>
-              <span id="resultState">대기</span>
+              <span id="resultState" aria-live="polite" aria-atomic="true">대기</span>
             </div>
             <div class="result-actions">
               <button class="secondary-button compact" id="undoEditButton" type="button" disabled>되돌리기</button>
@@ -124,7 +131,7 @@
             <strong>결과 없음</strong>
           </div>
 
-          <div class="groups-grid" id="groupsGrid"></div>
+          <div class="groups-grid" id="groupsGrid" aria-label="배정 결과"></div>
         </section>
 
         <aside class="side-stack" aria-label="검토와 저장값">
