@@ -32,12 +32,41 @@ let savedSettings = [];
 let lockedAssignments = new Map();
 const DEFAULT_ATTEMPTS = 1800;
 const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
+const LIST_DELIMITER_PATTERN = /[\t,;，、|]+/u;
+const WIDE_SPACE_PATTERN = /\s{2,}/u;
+const RULE_DELIMITER_PATTERN = /\s*(?:<->|↔|->|=>|→|-|,|，|、|;|\/|>|와|과)\s*|\t+|\s{2,}/u;
+const VALUE_SEPARATOR_PATTERN = /^\s*(?:=|＝|:|：|->|=>|→|>|,|，|、|\s)\s*(.+)$/u;
+const FALLBACK_VALUE_PATTERN = /^(.+?)\s*(?:=|＝|:|：|->|=>|→|>|,|，|、|\s)\s*(.+)$/u;
 
-function splitLines(value) {
+function normalizeToken(value) {
   return value
+    .replace(/\u00a0/g, " ")
+    .trim()
+    .replace(/^(?:[-*•]\s+|\d+[.)]\s+)/u, "")
+    .trim();
+}
+
+function splitLines(value = "") {
+  return String(value)
+    .replace(/\r/g, "")
     .split("\n")
-    .map((item) => item.trim())
+    .map(normalizeToken)
     .filter(Boolean);
+}
+
+function splitParticipants(value = "") {
+  const participants = [];
+
+  splitLines(value).forEach((line) => {
+    line
+      .split(LIST_DELIMITER_PATTERN)
+      .flatMap((part) => part.split(WIDE_SPACE_PATTERN))
+      .map(normalizeToken)
+      .filter(Boolean)
+      .forEach((participant) => participants.push(participant));
+  });
+
+  return participants;
 }
 
 function uniqueItems(items) {
@@ -145,10 +174,39 @@ function loadSavedSettings() {
 }
 
 function parseRuleLine(line) {
-  return line
-    .split(/\s*(?:-|,|\/|>|→|↔|와|과)\s*/u)
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const members = line.split(RULE_DELIMITER_PATTERN).map(normalizeToken).filter(Boolean);
+
+  if (members.length > 1) {
+    return members;
+  }
+
+  return line.split(/\s+/u).map(normalizeToken).filter(Boolean);
+}
+
+function parseMemberValueLine(line, names) {
+  const knownNames = [...names].sort((left, right) => right.length - left.length);
+
+  for (const member of knownNames) {
+    if (!line.startsWith(member)) {
+      continue;
+    }
+
+    const match = line.slice(member.length).match(VALUE_SEPARATOR_PATTERN);
+    if (match) {
+      return { member, value: match[1].trim() };
+    }
+  }
+
+  const fallback = line.match(FALLBACK_VALUE_PATTERN);
+
+  if (!fallback) {
+    return null;
+  }
+
+  return {
+    member: normalizeToken(fallback[1]),
+    value: fallback[2].trim(),
+  };
 }
 
 function parseRules(value, names, kind) {
@@ -183,15 +241,15 @@ function parseFixedRules(value, names, groupCount) {
   const fixedByMember = new Map();
 
   splitLines(value).forEach((line, lineIndex) => {
-    const match = line.match(/^(.+?)\s*(?:=|:|->|>|,|\s)\s*(\d+)\s*(?:그룹)?$/u);
+    const parsed = parseMemberValueLine(line, names);
 
-    if (!match) {
+    if (!parsed) {
       errors.push(`고정 배정 ${lineIndex + 1}번째 줄은 이름과 그룹 번호를 입력해야 합니다.`);
       return;
     }
 
-    const member = match[1].trim();
-    const groupNumber = Number(match[2]);
+    const member = parsed.member;
+    const groupNumber = Number(parsed.value.replace(/\s*(?:그룹|번)$/u, "").trim());
 
     if (!known.has(member)) {
       errors.push(`고정 배정 ${lineIndex + 1}번째 줄의 이름을 참가자에서 찾을 수 없습니다: ${member}`);
@@ -224,15 +282,15 @@ function parseAttributeRules(value, names) {
   const errors = [];
 
   splitLines(value).forEach((line, lineIndex) => {
-    const match = line.match(/^(.+?)\s*(?:=|:|,|\s)\s*(.+)$/u);
+    const parsed = parseMemberValueLine(line, names);
 
-    if (!match) {
+    if (!parsed) {
       errors.push(`속성 균형 ${lineIndex + 1}번째 줄은 이름과 값을 입력해야 합니다.`);
       return;
     }
 
-    const member = match[1].trim();
-    const value = match[2].trim();
+    const member = parsed.member;
+    const value = parsed.value;
 
     if (!known.has(member)) {
       errors.push(`속성 균형 ${lineIndex + 1}번째 줄의 이름을 참가자에서 찾을 수 없습니다: ${member}`);
@@ -258,8 +316,9 @@ function getGroupNames(groupCount) {
 }
 
 function getInputs() {
-  const participants = uniqueItems(splitLines(participantsInput.value));
-  const duplicateCount = splitLines(participantsInput.value).length - participants.length;
+  const parsedParticipants = splitParticipants(participantsInput.value);
+  const participants = uniqueItems(parsedParticipants);
+  const duplicateCount = parsedParticipants.length - participants.length;
   const groupCount = Number(groupCountInput.value);
   const attempts = DEFAULT_ATTEMPTS;
   const errors = [];
@@ -728,7 +787,7 @@ function renderSummary(participantCount, groupCount, ruleCount) {
 }
 
 function renderDraftStats() {
-  const participants = uniqueItems(splitLines(participantsInput.value));
+  const participants = uniqueItems(splitParticipants(participantsInput.value));
   const rules =
     splitLines(togetherInput.value).length +
     splitLines(separateInput.value).length +
@@ -810,7 +869,7 @@ function renderGroups(plan) {
 }
 
 function getSettingsMeta(settings) {
-  const participantCount = splitLines(settings.participants).length;
+  const participantCount = splitParticipants(settings.participants).length;
   const ruleCount =
     splitLines(settings.together).length +
     splitLines(settings.separate).length +

@@ -229,6 +229,12 @@ input[type="text"] {
     background 140ms ease;
 }
 
+textarea::placeholder,
+input::placeholder {
+  color: #8a94a6;
+  opacity: 1;
+}
+
 textarea {
   height: 46px;
   min-height: 46px;
@@ -384,17 +390,23 @@ input[type="text"]:focus {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .result-actions {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
+  min-width: 0;
 }
 
 .copy-mode {
   min-height: 34px;
+  width: 86px;
   max-width: 86px;
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #ffffff;
@@ -619,6 +631,7 @@ input[type="text"]:focus {
   grid-template-columns: minmax(0, 1fr) auto auto;
   gap: 8px;
   align-items: stretch;
+  min-width: 0;
 }
 
 .saved-load,
@@ -638,19 +651,28 @@ input[type="text"]:focus {
 .saved-load {
   display: grid;
   gap: 6px;
+  min-width: 0;
   min-height: 52px;
   padding: 8px;
   text-align: left;
 }
 
 .saved-load strong {
+  min-width: 0;
+  overflow: hidden;
   font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .saved-load span {
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .saved-delete {
@@ -736,6 +758,22 @@ input[type="text"]:focus {
     flex-direction: column;
   }
 
+  .result-toolbar > div {
+    width: 100%;
+  }
+
+  .result-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(96px, 1fr) minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .result-actions .secondary-button.compact,
+  .copy-mode {
+    width: 100%;
+    max-width: none;
+  }
+
   .summary-strip div + div {
     border-top: 1px solid var(--line);
     border-left: 0;
@@ -761,5 +799,16 @@ input[type="text"]:focus {
 
   .groups-grid {
     grid-template-columns: 1fr;
+  }
+
+  .saved-item {
+    grid-template-columns: minmax(0, 1fr) 42px 42px;
+    gap: 6px;
+  }
+
+  .saved-rename,
+  .saved-delete {
+    min-width: 42px;
+    padding: 0 6px;
   }
 }
