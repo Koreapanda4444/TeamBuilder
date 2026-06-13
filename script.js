@@ -703,9 +703,17 @@ function buildPlan(input) {
   const componentTooLarge = components.find((component) => component.size > maxTargetSize);
 
   if (componentTooLarge) {
+    const detail = `함께 묶인 인원이 너무 많습니다: ${componentTooLarge.members.join(", ")}`;
+
     return {
-      error: `함께 묶인 인원이 너무 많습니다: ${componentTooLarge.members.join(", ")}`,
-      audit: [],
+      error: detail,
+      audit: [
+        {
+          type: "error",
+          title: "함께 배정 확인",
+          detail,
+        },
+      ],
     };
   }
 
@@ -812,14 +820,126 @@ function renderDraftStats() {
   }
 }
 
+function getRuleCountFromInput(input, extraRules = []) {
+  return (
+    input.togetherRules.length +
+    input.separateRules.length +
+    input.fixedRules.length +
+    input.attributeRules.length +
+    extraRules.length
+  );
+}
+
+function getValidLockedRules(participants, groupCount) {
+  const participantSet = new Set(participants);
+  const lockedRules = [];
+  const nextLocks = new Map();
+
+  lockedAssignments.forEach((groupIndex, member) => {
+    if (participantSet.has(member) && groupIndex >= 0 && groupIndex < groupCount) {
+      lockedRules.push({ member, groupIndex, raw: `${member}=${groupIndex + 1}`, locked: true });
+      nextLocks.set(member, groupIndex);
+    }
+  });
+
+  return { lockedRules, nextLocks };
+}
+
+function refreshAuditForCurrentPlan(extraItems = []) {
+  if (!lastPlan) {
+    return;
+  }
+
+  const input = getInputs();
+
+  if (input.errors.length) {
+    renderAudit(
+      input.errors.map((detail) => ({
+        type: "error",
+        title: "입력 확인",
+        detail,
+      })),
+      input,
+    );
+    return;
+  }
+
+  const { lockedRules, nextLocks } = getValidLockedRules(input.participants, input.groupCount);
+  lockedAssignments = nextLocks;
+
+  const audit = validatePlan(
+    lastPlan,
+    input.togetherRules,
+    input.separateRules,
+    [...input.fixedRules, ...lockedRules],
+    input.attributeRules,
+  );
+
+  renderSummary(input.participants.length, input.groupCount, getRuleCountFromInput(input, lockedRules));
+  renderAudit([...extraItems, ...audit], input);
+}
+
 function toggleMemberLock(member, groupIndex) {
-  if (lockedAssignments.get(member) === groupIndex) {
+  const groupNames = getGroupNames(lastPlan?.length || 0);
+  const wasLocked = lockedAssignments.get(member) === groupIndex;
+
+  if (wasLocked) {
     lockedAssignments.delete(member);
   } else {
     lockedAssignments.set(member, groupIndex);
   }
 
   renderGroups(lastPlan);
+  refreshAuditForCurrentPlan([
+    {
+      type: "warning",
+      title: wasLocked ? "고정 해제" : "고정 적용",
+      detail: `${member} → ${groupNames[groupIndex] || `${groupIndex + 1}그룹`}`,
+      hint: wasLocked ? "다음 생성부터 이 멤버는 다시 움직일 수 있습니다." : "다음 생성에도 이 위치를 유지합니다.",
+    },
+  ]);
+  setResultState("수정됨");
+  setStatus(wasLocked ? `${member}의 고정을 해제했습니다.` : `${member}를 고정했습니다.`, "success");
+}
+
+function moveMember(member, fromGroupIndex, toGroupIndex) {
+  if (!lastPlan || fromGroupIndex === toGroupIndex) {
+    renderGroups(lastPlan);
+    return;
+  }
+
+  const source = lastPlan[fromGroupIndex];
+  const target = lastPlan[toGroupIndex];
+
+  if (!source || !target) {
+    renderGroups(lastPlan);
+    return;
+  }
+
+  const memberIndex = source.indexOf(member);
+
+  if (memberIndex === -1) {
+    renderGroups(lastPlan);
+    return;
+  }
+
+  source.splice(memberIndex, 1);
+  target.push(member);
+  lockedAssignments.set(member, toGroupIndex);
+
+  const groupNames = getGroupNames(lastPlan.length);
+
+  renderGroups(lastPlan);
+  refreshAuditForCurrentPlan([
+    {
+      type: "warning",
+      title: "직접 수정",
+      detail: `${member} → ${groupNames[toGroupIndex]}`,
+      hint: "다음 생성에도 유지되도록 고정했습니다.",
+    },
+  ]);
+  setResultState("수정됨");
+  setStatus(`${member}를 ${groupNames[toGroupIndex]}으로 옮겼습니다.`, "success");
 }
 
 function renderGroups(plan) {
@@ -848,17 +968,34 @@ function renderGroups(plan) {
     members.forEach((member) => {
       const item = document.createElement("li");
       const name = document.createElement("span");
+      const actions = document.createElement("div");
+      const moveSelect = document.createElement("select");
       const lockButton = document.createElement("button");
       const locked = lockedAssignments.get(member) === index;
 
       name.textContent = member;
+      actions.className = "member-actions";
+      moveSelect.className = "member-move-select";
+      moveSelect.setAttribute("aria-label", `${member} 이동`);
+
+      groupNames.forEach((groupName, groupIndex) => {
+        const option = document.createElement("option");
+        option.value = String(groupIndex);
+        option.textContent = groupName;
+        moveSelect.append(option);
+      });
+
+      moveSelect.value = String(index);
+      moveSelect.addEventListener("change", (event) => moveMember(member, index, Number(event.target.value)));
+
       lockButton.className = "lock-button";
       lockButton.classList.toggle("is-locked", locked);
       lockButton.type = "button";
       lockButton.textContent = locked ? "해제" : "고정";
       lockButton.addEventListener("click", () => toggleMemberLock(member, index));
 
-      item.append(name, lockButton);
+      actions.append(moveSelect, lockButton);
+      item.append(name, actions);
       list.append(item);
     });
 
@@ -999,19 +1136,67 @@ function renameSavedSetting(id, nextName = null) {
 }
 
 function applyLockedRules(input) {
-  const participantSet = new Set(input.participants);
-  const lockedRules = [];
-  const nextLocks = new Map();
-
-  lockedAssignments.forEach((groupIndex, member) => {
-    if (participantSet.has(member) && groupIndex >= 0 && groupIndex < input.groupCount) {
-      lockedRules.push({ member, groupIndex, raw: `${member}=${groupIndex + 1}`, locked: true });
-      nextLocks.set(member, groupIndex);
-    }
-  });
-
+  const { lockedRules, nextLocks } = getValidLockedRules(input.participants, input.groupCount);
   lockedAssignments = nextLocks;
   input.fixedRules = [...input.fixedRules, ...lockedRules];
+}
+
+function getAuditHint(item) {
+  if (!["error", "warning"].includes(item.type)) {
+    return "";
+  }
+
+  const text = `${item.title} ${item.detail}`;
+
+  if (text.includes("최소 2명")) {
+    return "명단에 참가자를 더 추가하세요.";
+  }
+
+  if (text.includes("그룹 수는 2")) {
+    return "그룹 수를 2 이상으로 입력하세요.";
+  }
+
+  if (text.includes("참가자 수보다")) {
+    return "그룹 수를 줄이거나 참가자를 더 추가하세요.";
+  }
+
+  if (text.includes("이름을 2개 이상")) {
+    return "한 줄에 A-B처럼 2명 이상 입력하세요.";
+  }
+
+  if (text.includes("찾을 수 없습니다")) {
+    return "명단과 규칙의 표기를 같게 맞추세요.";
+  }
+
+  if (text.includes("그룹 번호") || text.includes("범위를 벗어")) {
+    return "고정 배정은 A=1처럼 1부터 현재 그룹 수 사이의 번호를 쓰세요.";
+  }
+
+  if (text.includes("고정된 인원이 너무 많")) {
+    return "해당 그룹의 고정 배정을 줄이거나 그룹 수를 줄여 한 그룹당 인원을 늘리세요.";
+  }
+
+  if (text.includes("함께 묶인 인원이 너무 많")) {
+    return "함께 배정 줄을 나누거나 그룹 수를 줄여 한 그룹당 인원을 늘리세요.";
+  }
+
+  if (text.includes("모두 분리할 수")) {
+    return "분리 대상을 줄이거나 그룹 수를 늘리세요.";
+  }
+
+  if (text.includes("충돌")) {
+    return "함께 배정, 분리 배정, 고정 배정 중 서로 맞지 않는 줄을 줄이세요.";
+  }
+
+  if (text.includes("생성 실패") || text.includes("찾지 못했습니다")) {
+    return "분리 배정이나 고정 배정을 줄인 뒤 다시 생성하세요.";
+  }
+
+  if (text.includes("속성 균형 반영")) {
+    return "완전 균등이 아니면 속성 값을 더 고르게 입력하거나 그룹 수를 조정하세요.";
+  }
+
+  return "";
 }
 
 function renderAudit(items, input = null) {
@@ -1047,10 +1232,18 @@ function renderAudit(items, input = null) {
 
     const title = document.createElement("strong");
     const detail = document.createElement("span");
+    const hintText = item.hint || getAuditHint(item);
 
     title.textContent = item.title;
     detail.textContent = item.detail;
     element.append(title, detail);
+
+    if (hintText) {
+      const hint = document.createElement("em");
+      hint.textContent = hintText;
+      element.append(hint);
+    }
+
     auditList.append(element);
   }
 }
@@ -1059,7 +1252,7 @@ function generate() {
   const input = getInputs();
   applyLockedRules(input);
 
-  const ruleCount = input.togetherRules.length + input.separateRules.length + input.fixedRules.length + input.attributeRules.length;
+  const ruleCount = getRuleCountFromInput(input);
   renderDraftStats();
   renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0, ruleCount);
 
