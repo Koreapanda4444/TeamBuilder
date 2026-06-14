@@ -378,7 +378,10 @@ select:focus-visible,
 .primary-button:disabled,
 .secondary-button:disabled,
 .ghost-button:disabled,
-.mini-button:disabled {
+.mini-button:disabled,
+.saved-load:disabled,
+.saved-rename:disabled,
+.saved-delete:disabled {
   cursor: not-allowed;
   opacity: 0.45;
 }

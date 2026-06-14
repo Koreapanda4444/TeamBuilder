@@ -140,10 +140,13 @@ function setGenerateBusy(active) {
   clearLocksButton.disabled = active;
   copyModeSelect.disabled = active;
   copyButton.disabled = active;
+  saveSettingsButton.disabled = active;
+  savedSettingsNameInput.disabled = active;
   getInputFields().forEach((field) => {
     field.disabled = active;
   });
   generateButton.textContent = active ? "생성 중" : "생성";
+  renderSavedSettings();
   updateUndoButtonState();
 }
 
@@ -1335,7 +1338,7 @@ function getSettingsMeta(settings) {
 function renderSavedSettings() {
   savedSettingsCount.textContent = String(savedSettings.length);
   savedSettingsList.innerHTML = "";
-  updateSettingsButton.disabled = !savedSettings.some((item) => item.id === activeSavedSettingId);
+  updateSettingsButton.disabled = isGenerating || !savedSettings.some((item) => item.id === activeSavedSettingId);
 
   if (!savedSettings.length) {
     const empty = document.createElement("div");
@@ -1362,6 +1365,9 @@ function renderSavedSettings() {
     renameButton.type = "button";
     deleteButton.className = "saved-delete";
     deleteButton.type = "button";
+    loadButton.disabled = isGenerating;
+    renameButton.disabled = isGenerating;
+    deleteButton.disabled = isGenerating;
 
     title.textContent = item.name || `${index + 1}. ${meta.groupCount}그룹`;
     detail.textContent = `${meta.participantCount}명 / ${meta.rollCount}회 / 규칙 ${meta.ruleCount}개`;
@@ -1702,6 +1708,9 @@ async function generate() {
   } finally {
     isGenerating = false;
     setGenerateBusy(false);
+    if (lastPlan) {
+      renderGroups(lastPlan);
+    }
   }
 }
 
