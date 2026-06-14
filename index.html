@@ -93,6 +93,24 @@
             <button class="primary-button" id="generateButton" type="button">생성</button>
           </div>
 
+          <div class="roll-progress" id="rollProgress" aria-live="polite" aria-atomic="true" hidden>
+            <div class="roll-progress-header">
+              <span id="rollProgressText">돌리기 대기</span>
+              <strong id="rollProgressCount">0/0</strong>
+            </div>
+            <div
+              class="roll-progress-track"
+              id="rollProgressTrack"
+              role="progressbar"
+              aria-label="돌리기 진행률"
+              aria-valuemin="0"
+              aria-valuemax="0"
+              aria-valuenow="0"
+            >
+              <span id="rollProgressBar"></span>
+            </div>
+          </div>
+
           <p class="status-message" id="statusMessage" role="status" aria-live="polite" aria-atomic="true"></p>
         </aside>
 

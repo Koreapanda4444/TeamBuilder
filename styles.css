@@ -375,6 +375,7 @@ select:focus-visible,
   outline-offset: 2px;
 }
 
+.primary-button:disabled,
 .secondary-button:disabled,
 .ghost-button:disabled,
 .mini-button:disabled {
@@ -407,6 +408,51 @@ select:focus-visible,
   color: var(--muted);
   font-size: 13px;
   line-height: 1.45;
+}
+
+.roll-progress {
+  display: grid;
+  gap: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-soft);
+}
+
+.roll-progress[hidden] {
+  display: none;
+}
+
+.roll-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.roll-progress-header strong {
+  flex-shrink: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.roll-progress-track {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.roll-progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 120ms ease;
 }
 
 .status-message.is-error {

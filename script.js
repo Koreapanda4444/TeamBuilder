@@ -13,6 +13,11 @@ const clearLocksButton = document.querySelector("#clearLocksButton");
 const copyModeSelect = document.querySelector("#copyModeSelect");
 const copyButton = document.querySelector("#copyButton");
 const statusMessage = document.querySelector("#statusMessage");
+const rollProgress = document.querySelector("#rollProgress");
+const rollProgressText = document.querySelector("#rollProgressText");
+const rollProgressCount = document.querySelector("#rollProgressCount");
+const rollProgressTrack = document.querySelector("#rollProgressTrack");
+const rollProgressBar = document.querySelector("#rollProgressBar");
 const groupsGrid = document.querySelector("#groupsGrid");
 const emptyState = document.querySelector("#emptyState");
 const auditList = document.querySelector("#auditList");
@@ -35,6 +40,7 @@ let savedSettings = [];
 let activeSavedSettingId = null;
 let lockedAssignments = new Map();
 let editHistory = [];
+let isGenerating = false;
 const DEFAULT_ATTEMPTS = 1800;
 const DEFAULT_ROLL_COUNT = 1;
 const MAX_ROLL_COUNT = 30;
@@ -131,6 +137,59 @@ function setResultState(text, type = "default") {
   resultState.textContent = text;
   resultState.classList.toggle("is-ready", type === "ready");
   resultState.classList.toggle("is-error", type === "error");
+}
+
+function setGenerateBusy(active) {
+  generateButton.disabled = active;
+  resetButton.disabled = active;
+  getInputFields().forEach((field) => {
+    field.disabled = active;
+  });
+  generateButton.textContent = active ? "생성 중" : "생성";
+}
+
+function waitForProgressPaint() {
+  return new Promise((resolve) => {
+    if (typeof requestAnimationFrame !== "function") {
+      setTimeout(resolve, 16);
+      return;
+    }
+
+    requestAnimationFrame(() => requestAnimationFrame(resolve));
+  });
+}
+
+function hideRollProgress() {
+  rollProgress.hidden = true;
+  rollProgressText.textContent = "돌리기 대기";
+  rollProgressCount.textContent = "0/0";
+  rollProgressBar.style.width = "0%";
+  rollProgressTrack.setAttribute("aria-valuemax", "0");
+  rollProgressTrack.setAttribute("aria-valuenow", "0");
+}
+
+function renderRollProgress(current, total, successCount = current) {
+  if (total <= 1) {
+    hideRollProgress();
+    return;
+  }
+
+  const safeTotal = Math.max(1, total);
+  const safeCurrent = Math.min(Math.max(current, 0), safeTotal);
+  const percent = Math.round((safeCurrent / safeTotal) * 100);
+  const failedCount = safeCurrent - successCount;
+
+  rollProgress.hidden = false;
+  rollProgressText.textContent =
+    safeCurrent === 0
+      ? `${safeTotal}회 돌리기 준비 중`
+      : failedCount > 0
+        ? `${safeCurrent}번째 완료, ${successCount}회 생성`
+        : `${safeCurrent}번째 완료`;
+  rollProgressCount.textContent = `${safeCurrent}/${safeTotal}`;
+  rollProgressBar.style.width = `${percent}%`;
+  rollProgressTrack.setAttribute("aria-valuemax", String(safeTotal));
+  rollProgressTrack.setAttribute("aria-valuenow", String(safeCurrent));
 }
 
 function getInputFields() {
@@ -932,10 +991,11 @@ function buildPlan(input) {
   };
 }
 
-function buildRolledPlan(input) {
+async function buildRolledPlan(input, onProgress = null) {
   const rollCount = input.rollCount || DEFAULT_ROLL_COUNT;
 
   if (rollCount <= 1) {
+    hideRollProgress();
     return buildPlan(input);
   }
 
@@ -945,11 +1005,20 @@ function buildRolledPlan(input) {
   const attemptsPerRoll = Math.max(300, Math.floor(input.attempts / Math.min(rollCount, 4)));
   const rollInput = { ...input, attempts: attemptsPerRoll };
 
+  if (onProgress) {
+    onProgress({ current: 0, total: rollCount, successCount });
+    await waitForProgressPaint();
+  }
+
   for (let rollIndex = 1; rollIndex <= rollCount; rollIndex += 1) {
     const result = buildPlan(rollInput);
 
     if (result.error) {
       lastError = result;
+      if (onProgress) {
+        onProgress({ current: rollIndex, total: rollCount, successCount });
+        await waitForProgressPaint();
+      }
       continue;
     }
 
@@ -964,6 +1033,11 @@ function buildRolledPlan(input) {
         score,
         selectedRoll: rollIndex,
       };
+    }
+
+    if (onProgress) {
+      onProgress({ current: rollIndex, total: rollCount, successCount });
+      await waitForProgressPaint();
     }
   }
 
@@ -1403,6 +1477,7 @@ function loadSavedSetting(item) {
   renderGroups(null);
   renderAudit([]);
   setResultState("대기");
+  hideRollProgress();
   renderSavedSettings();
   setStatus("저장값을 불러왔습니다.", "success");
 }
@@ -1576,60 +1651,76 @@ function renderAudit(items, input = null) {
   }
 }
 
-function generate() {
-  const input = getInputs();
-  applyLockedRules(input);
-
-  const ruleCount = getRuleCountFromInput(input);
-  renderDraftStats();
-  renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0, ruleCount);
-
-  if (input.errors.length) {
-    lastPlan = null;
-    lastAudit = [];
-    markInvalidFields(input.errors);
-    clearEditHistory();
-    renderGroups(null);
-    renderAudit(
-      input.errors.map((detail) => ({
-        type: "error",
-        title: "입력 확인",
-        detail,
-      })),
-      input,
-    );
-    setResultState("오류", "error");
-    setStatus(input.errors[0], "error");
+async function generate() {
+  if (isGenerating) {
     return;
   }
 
-  const result = buildRolledPlan(input);
+  isGenerating = true;
+  setGenerateBusy(true);
 
-  if (result.error) {
-    lastPlan = null;
+  try {
+    const input = getInputs();
+    applyLockedRules(input);
+    const ruleCount = getRuleCountFromInput(input);
+    renderDraftStats();
+    renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0, ruleCount);
+
+    if (input.errors.length) {
+      lastPlan = null;
+      lastAudit = [];
+      markInvalidFields(input.errors);
+      clearEditHistory();
+      renderGroups(null);
+      renderAudit(
+        input.errors.map((detail) => ({
+          type: "error",
+          title: "입력 확인",
+          detail,
+        })),
+        input,
+      );
+      hideRollProgress();
+      setResultState("오류", "error");
+      setStatus(input.errors[0], "error");
+      return;
+    }
+
+    const result = await buildRolledPlan(input, ({ current, total, successCount }) => {
+      renderRollProgress(current, total, successCount);
+      setResultState("진행 중");
+      setStatus(current === 0 ? `${total}회 돌리기를 시작합니다.` : `${total}회 중 ${current}회 완료`, "default");
+    });
+
+    if (result.error) {
+      lastPlan = null;
+      lastAudit = result.audit;
+      markInvalidFields([result.error]);
+      clearEditHistory();
+      renderGroups(null);
+      renderAudit(result.audit, input);
+      setResultState("실패", "error");
+      setStatus(result.error, "error");
+      return;
+    }
+
+    lastPlan = result.plan;
     lastAudit = result.audit;
-    markInvalidFields([result.error]);
+    clearFieldValidity();
     clearEditHistory();
-    renderGroups(null);
+    renderGroups(result.plan);
     renderAudit(result.audit, input);
-    setResultState("실패", "error");
-    setStatus(result.error, "error");
-    return;
+    setResultState("완료", "ready");
+    setStatus(
+      input.rollCount > 1
+        ? `${input.rollCount}회 돌려 ${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`
+        : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
+      "success",
+    );
+  } finally {
+    isGenerating = false;
+    setGenerateBusy(false);
   }
-
-  lastPlan = result.plan;
-  lastAudit = result.audit;
-  clearFieldValidity();
-  clearEditHistory();
-  renderGroups(result.plan);
-  renderAudit(result.audit, input);
-  setResultState("완료", "ready");
-  setStatus(
-    input.rollCount > 1
-      ? `${input.rollCount}회 돌려 ${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`
-      : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
-    "success",
-  );
 }
 
 function formatCopyResult(plan, groupNames, auditItems, mode) {
@@ -1694,6 +1785,7 @@ function reset() {
   renderGroups(null);
   renderAudit([]);
   renderSavedSettings();
+  hideRollProgress();
   setResultState("대기");
   setStatus("");
 }
@@ -1768,6 +1860,9 @@ getInputFields().forEach((input) => {
   input.addEventListener("input", () => {
     input.removeAttribute("aria-invalid");
     renderDraftStats();
+    if (!isGenerating) {
+      hideRollProgress();
+    }
     if (lastPlan) {
       if (input === groupNamesInput) {
         renderGroups(lastPlan);
