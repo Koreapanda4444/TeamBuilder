@@ -89,6 +89,17 @@
                 <span class="sr-only" id="attributesHelp">이름과 속성 값을 함께 입력합니다.</span>
               </label>
             </div>
+            <div class="nested-controls">
+              <label class="checkbox-field">
+                <input id="twoStageInput" type="checkbox" />
+                <span>2단계 배정</span>
+              </label>
+              <label class="field">
+                <span>역할</span>
+                <input id="rolesInput" type="text" placeholder="TOP, JG, MID, ADC, SUP" disabled aria-describedby="rolesHelp" />
+                <span class="sr-only" id="rolesHelp">그룹 안에서 배정할 역할을 쉼표로 구분합니다.</span>
+              </label>
+            </div>
             <div class="rule-feedback" id="ruleFeedback" role="status" aria-live="polite"></div>
           </details>
 

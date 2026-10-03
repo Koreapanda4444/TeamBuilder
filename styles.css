@@ -947,3 +947,30 @@ select:focus-visible,
   min-height: 34px;
   padding: 0 10px;
 }
+
+.nested-controls {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+#rolesInput {
+  min-height: 34px;
+  padding: 0 10px;
+}
+
+#rolesInput:disabled {
+  background: var(--surface-strong);
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.65;
+}

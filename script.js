@@ -7,6 +7,8 @@ const togetherInput = document.querySelector("#togetherInput");
 const separateInput = document.querySelector("#separateInput");
 const fixedInput = document.querySelector("#fixedInput");
 const attributesInput = document.querySelector("#attributesInput");
+const twoStageInput = document.querySelector("#twoStageInput");
+const rolesInput = document.querySelector("#rolesInput");
 const generateButton = document.querySelector("#generateButton");
 const resetButton = document.querySelector("#resetButton");
 const undoEditButton = document.querySelector("#undoEditButton");
@@ -145,6 +147,7 @@ function setGenerateBusy(active) {
   getInputFields().forEach((field) => {
     field.disabled = active;
   });
+  syncTwoStageControls();
   generateButton.textContent = active ? "생성 중" : "생성";
   renderSavedSettings();
   updateUndoButtonState();
@@ -161,8 +164,12 @@ function waitForResultPaint() {
   });
 }
 
+function syncTwoStageControls() {
+  rolesInput.disabled = isGenerating || !twoStageInput.checked;
+}
+
 function getInputFields() {
-  return [participantsInput, groupCountInput, rollCountInput, groupNamesInput, groupCapacitiesInput, togetherInput, separateInput, fixedInput, attributesInput];
+  return [participantsInput, groupCountInput, rollCountInput, groupNamesInput, groupCapacitiesInput, togetherInput, separateInput, fixedInput, attributesInput, twoStageInput, rolesInput];
 }
 
 function clearFieldValidity() {
@@ -238,6 +245,8 @@ function getDraftSettings() {
     separate: separateInput.value,
     fixed: fixedInput.value,
     attributes: attributesInput.value,
+    twoStage: twoStageInput.checked,
+    roles: rolesInput.value,
   };
 }
 
@@ -251,6 +260,9 @@ function applyDraftSettings(settings) {
   separateInput.value = settings?.separate || "";
   fixedInput.value = settings?.fixed || "";
   attributesInput.value = settings?.attributes || "";
+  twoStageInput.checked = settings?.twoStage === true;
+  rolesInput.value = settings?.roles || "";
+  syncTwoStageControls();
 }
 
 function persistSavedSettings() {
@@ -1837,6 +1849,7 @@ function handleSavedNameKeydown(event) {
   }
 }
 
+twoStageInput.addEventListener("change", syncTwoStageControls);
 generateButton.addEventListener("click", generate);
 resetButton.addEventListener("click", () => reset());
 undoEditButton.addEventListener("click", undoLastEdit);
@@ -1853,6 +1866,7 @@ rollCountInput.addEventListener("keydown", handleSingleLineKeydown);
 savedSettingsNameInput.addEventListener("keydown", handleSavedNameKeydown);
 getInputFields().forEach((input) => {
   input.addEventListener("input", () => {
+    syncTwoStageControls();
     input.removeAttribute("aria-invalid");
     renderDraftStats();
     if (lastPlan) {
