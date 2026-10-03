@@ -60,11 +60,8 @@
             </div>
           </section>
 
-          <section class="block">
-            <div class="block-header">
-              <h2>규칙</h2>
-              <span id="ruleCount">0개</span>
-            </div>
+          <details class="block rules-panel" id="rulesPanel">
+            <summary>규칙</summary>
             <div class="rule-grid">
               <label class="field">
                 <span>함께 배정</span>
@@ -87,7 +84,7 @@
                 <span class="sr-only" id="attributesHelp">이름과 속성 값을 함께 입력합니다.</span>
               </label>
             </div>
-          </section>
+          </details>
 
           <div class="action-row">
             <button class="primary-button" id="generateButton" type="button">생성</button>
@@ -125,10 +122,6 @@
             <div>
               <span>그룹</span>
               <strong id="summaryGroups">0</strong>
-            </div>
-            <div>
-              <span>규칙</span>
-              <strong id="summaryRules">0</strong>
             </div>
           </div>
 

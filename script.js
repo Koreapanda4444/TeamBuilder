@@ -18,11 +18,9 @@ const emptyState = document.querySelector("#emptyState");
 const auditList = document.querySelector("#auditList");
 const participantCount = document.querySelector("#participantCount");
 const participantPreview = document.querySelector("#participantPreview");
-const ruleCount = document.querySelector("#ruleCount");
 const resultState = document.querySelector("#resultState");
 const summaryParticipants = document.querySelector("#summaryParticipants");
 const summaryGroups = document.querySelector("#summaryGroups");
-const summaryRules = document.querySelector("#summaryRules");
 const savedSettingsCount = document.querySelector("#savedSettingsCount");
 const savedSettingsList = document.querySelector("#savedSettingsList");
 const saveSettingsButton = document.querySelector("#saveSettingsButton");
@@ -1034,7 +1032,6 @@ async function buildRolledPlan(input, onProgress = null) {
 function renderSummary(participantCount, groupCount, ruleCount) {
   summaryParticipants.textContent = String(participantCount);
   summaryGroups.textContent = String(groupCount);
-  summaryRules.textContent = String(ruleCount);
 }
 
 function renderDraftStats() {
@@ -1046,7 +1043,6 @@ function renderDraftStats() {
     splitLines(attributesInput.value).length;
 
   participantCount.textContent = `${participants.length}명`;
-  ruleCount.textContent = `${rules}개`;
   renderSummary(participants.length, Number(groupCountInput.value) || 0, rules);
 
   participantPreview.innerHTML = "";
@@ -1370,7 +1366,7 @@ function renderSavedSettings() {
     deleteButton.disabled = isGenerating;
 
     title.textContent = item.name || `${index + 1}. ${meta.groupCount}그룹`;
-    detail.textContent = `${meta.participantCount}명 / ${meta.rollCount}회 / 규칙 ${meta.ruleCount}개`;
+    detail.textContent = `${meta.participantCount}명 / ${meta.rollCount}회`;
     renameButton.textContent = "수정";
     deleteButton.textContent = "삭제";
     loadButton.setAttribute("aria-label", `${title.textContent} 불러오기`);

@@ -483,7 +483,7 @@ select:focus-visible,
 
 .summary-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   border: 1px solid var(--line);
   border-radius: 8px;
   overflow: hidden;
@@ -911,4 +911,24 @@ select:focus-visible,
     min-width: 42px;
     padding: 0 6px;
   }
+}
+
+.input-panel {
+  overflow-y: auto;
+}
+
+.rules-panel {
+  display: block;
+}
+
+.rules-panel summary {
+  cursor: pointer;
+  padding: 8px 0;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.rules-panel summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
