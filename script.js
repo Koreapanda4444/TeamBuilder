@@ -13,6 +13,10 @@ const twoStageInput = document.querySelector("#twoStageInput");
 const rolesInput = document.querySelector("#rolesInput");
 const generateButton = document.querySelector("#generateButton");
 const resetButton = document.querySelector("#resetButton");
+const importJSONButton = document.querySelector("#importJSONButton");
+const exportJSONButton = document.querySelector("#exportJSONButton");
+const settingsJSONFile = document.querySelector("#settingsJSONFile");
+const rulesPanel = document.querySelector("#rulesPanel");
 const undoEditButton = document.querySelector("#undoEditButton");
 const clearLocksButton = document.querySelector("#clearLocksButton");
 const copyModeSelect = document.querySelector("#copyModeSelect");
@@ -226,6 +230,9 @@ function setGenerateBusy(active) {
   generateButton.disabled = active;
   importCSVButton.disabled = active;
   participantCSVFile.disabled = active;
+  importJSONButton.disabled = active;
+  exportJSONButton.disabled = active;
+  settingsJSONFile.disabled = active;
   resetButton.disabled = active;
   clearLocksButton.disabled = active;
   copyModeSelect.disabled = active;
@@ -1968,6 +1975,83 @@ async function copyResult() {
   }
 }
 
+function buildSettingsJSON(settings = getDraftSettings()) {
+  return JSON.stringify({ app: "TeamBuilder", version: 1, settings }, null, 2);
+}
+
+function parseSettingsJSON(text) {
+  const data = JSON.parse(text.replace(/^\uFEFF/u, ""));
+  if (!data || typeof data !== "object" || Array.isArray(data) || data.app !== "TeamBuilder" || data.version !== 1) {
+    throw new Error("지원하는 TeamBuilder 설정 JSON이 아닙니다.");
+  }
+  const source = data.settings;
+  if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("JSON 설정 형식을 확인하세요.");
+  const settings = {};
+  const textFields = ["participants", "groupNames", "groupCapacities", "together", "separate", "fixed", "attributes", "roles"];
+  for (const key of textFields) {
+    if (source[key] !== undefined && typeof source[key] !== "string") throw new Error("JSON 설정 입력값의 형식을 확인하세요.");
+    settings[key] = source[key] || "";
+  }
+  for (const [key, fallback] of [["groupCount", "3"], ["rollCount", "1"]]) {
+    if (source[key] !== undefined && typeof source[key] !== "string" && !(typeof source[key] === "number" && Number.isSafeInteger(source[key]))) {
+      throw new Error("JSON 배정 설정의 형식을 확인하세요.");
+    }
+    settings[key] = source[key] === undefined ? fallback : String(source[key]);
+  }
+  if (source.twoStage !== undefined && typeof source.twoStage !== "boolean") throw new Error("JSON 2단계 배정 설정의 형식을 확인하세요.");
+  settings.twoStage = source.twoStage === true;
+  settings.participantRecords = null;
+  if (source.participantRecords != null) {
+    if (!Array.isArray(source.participantRecords) || source.participantRecords.some((record) => !record || typeof record.name !== "string" || !record.name.trim() || (record.role !== undefined && typeof record.role !== "string"))) {
+      throw new Error("JSON 참가자 정보의 형식을 확인하세요.");
+    }
+    settings.participantRecords = source.participantRecords.map((record) => ({ name: record.name, role: record.role || "" }));
+    if (settings.participants !== settings.participantRecords.map((record) => record.name).join("\n")) {
+      throw new Error("JSON 참가자 정보와 명단이 일치하지 않습니다.");
+    }
+  }
+  return settings;
+}
+
+function restoreSettings(settings) {
+  applyDraftSettings(settings);
+  activeSavedSettingId = null;
+  savedSettingsNameInput.value = "";
+  lastPlan = null;
+  lastRoleAssignments = null;
+  lastAudit = [];
+  lockedAssignments = new Map();
+  clearEditHistory();
+  clearFieldValidity();
+  rulesPanel.open = false;
+  renderDraftStats();
+  renderGroups(null);
+  renderAudit([]);
+  renderSavedSettings();
+  setResultState("대기");
+}
+
+function exportSettingsJSON() {
+  if (isGenerating) return;
+  downloadText("TeamBuilder-settings.json", buildSettingsJSON(), "application/json;charset=utf-8");
+  setStatus("설정을 내보냈습니다.", "success");
+}
+
+async function importSettingsJSON(event) {
+  const file = event.target.files?.[0];
+  if (!file || isGenerating) return;
+  try {
+    const settings = parseSettingsJSON(await file.text());
+    if (isGenerating) return;
+    restoreSettings(settings);
+    setStatus("설정을 가져왔습니다.", "success");
+  } catch {
+    setStatus("설정 JSON 형식을 확인하세요.", "error");
+  } finally {
+    event.target.value = "";
+  }
+}
+
 function reset() {
   applyDraftSettings(null);
   lastPlan = null;
@@ -2040,6 +2124,9 @@ function handleSavedNameKeydown(event) {
 
 importCSVButton.addEventListener("click", () => participantCSVFile.click());
 participantCSVFile.addEventListener("change", importParticipantCSV);
+importJSONButton.addEventListener("click", () => settingsJSONFile.click());
+exportJSONButton.addEventListener("click", exportSettingsJSON);
+settingsJSONFile.addEventListener("change", importSettingsJSON);
 twoStageInput.addEventListener("change", syncTwoStageControls);
 generateButton.addEventListener("click", generate);
 resetButton.addEventListener("click", () => reset());
