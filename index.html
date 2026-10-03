@@ -27,7 +27,11 @@
           <section class="block">
             <div class="block-header">
               <h2>명단</h2>
-              <span id="participantCount">0명</span>
+              <div class="panel-actions">
+                <span id="participantCount">0명</span>
+                <button class="mini-button text-mini-button" id="importCSVButton" type="button">CSV</button>
+                <input id="participantCSVFile" type="file" accept=".csv,text/csv" hidden aria-label="CSV 명단 가져오기" />
+              </div>
             </div>
             <label class="field">
               <span>참가자</span>

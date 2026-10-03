@@ -1,4 +1,6 @@
 const participantsInput = document.querySelector("#participantsInput");
+const importCSVButton = document.querySelector("#importCSVButton");
+const participantCSVFile = document.querySelector("#participantCSVFile");
 const groupCountInput = document.querySelector("#groupCountInput");
 const rollCountInput = document.querySelector("#rollCountInput");
 const groupNamesInput = document.querySelector("#groupNamesInput");
@@ -31,6 +33,7 @@ const saveSettingsButton = document.querySelector("#saveSettingsButton");
 const updateSettingsButton = document.querySelector("#updateSettingsButton");
 const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput");
 
+let participantRecords = null;
 let lastPlan = null;
 let lastRoleAssignments = null;
 let lastAudit = [];
@@ -79,6 +82,87 @@ function splitParticipants(value = "") {
   });
 
   return participants;
+}
+
+function parseCSV(text) {
+  const source = text.replace(/^\uFEFF/u, "");
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let quoted = false;
+  let closedQuote = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (quoted) {
+      if (char === '"') {
+        if (source[index + 1] === '"') { cell += '"'; index += 1; }
+        else { quoted = false; closedQuote = true; }
+      } else cell += char;
+      continue;
+    }
+    if (char === '"') {
+      if (cell || closedQuote) throw new Error("CSV 따옴표 형식을 확인하세요.");
+      quoted = true;
+    } else if (char === ",") {
+      row.push(cell); cell = ""; closedQuote = false;
+    } else if (char === "\n" || char === "\r") {
+      row.push(cell); rows.push(row); row = []; cell = ""; closedQuote = false;
+      if (char === "\r" && source[index + 1] === "\n") index += 1;
+    } else {
+      if (closedQuote) throw new Error("CSV 따옴표 뒤에는 쉼표나 줄바꿈이 필요합니다.");
+      cell += char;
+    }
+  }
+  if (quoted) throw new Error("CSV 따옴표가 닫히지 않았습니다.");
+  row.push(cell);
+  rows.push(row);
+  return rows.filter((cells) => cells.some((value) => value.trim()));
+}
+
+function parseParticipantCSV(text) {
+  const rows = parseCSV(text);
+  if (!rows.length) throw new Error("CSV에 name 헤더와 참가자를 입력하세요.");
+  const headers = rows[0].map((header) => header.trim().toLowerCase());
+  if (new Set(headers).size !== headers.length || !headers.includes("name")) {
+    throw new Error("CSV에는 중복되지 않는 name 헤더가 필요합니다.");
+  }
+  const nameIndex = headers.indexOf("name");
+  const roleIndex = headers.indexOf("role");
+  const records = rows.slice(1).map((cells, index) => {
+    if (cells.length !== headers.length) throw new Error(`CSV ${index + 2}번째 줄의 열 수를 확인하세요.`);
+    const name = cells[nameIndex].trim();
+    if (!name) throw new Error(`CSV ${index + 2}번째 줄의 이름이 비어 있습니다.`);
+    return { name, role: roleIndex === -1 ? "" : cells[roleIndex].trim() };
+  });
+  if (!records.length) throw new Error("CSV에 참가자가 없습니다.");
+  return records;
+}
+
+function getParticipantNames(value = participantsInput.value, records = participantRecords) {
+  if (records && value === records.map((record) => record.name).join("\n")) return records.map((record) => record.name);
+  return splitParticipants(value);
+}
+
+function applyParticipantRecords(records) {
+  participantRecords = records.map((record) => ({ ...record }));
+  participantsInput.value = records.map((record) => record.name).join("\n");
+  renderDraftStats();
+  if (lastPlan) setResultState("수정됨");
+}
+
+async function importParticipantCSV(event) {
+  const file = event.target.files?.[0];
+  if (!file || isGenerating) return;
+  try {
+    const records = parseParticipantCSV(await file.text());
+    if (isGenerating) return;
+    applyParticipantRecords(records);
+    setStatus("CSV 명단을 가져왔습니다.", "success");
+  } catch (error) {
+    setStatus(error.message || "CSV를 가져오지 못했습니다.", "error");
+  } finally {
+    event.target.value = "";
+  }
 }
 
 function uniqueItems(items) {
@@ -139,6 +223,8 @@ function setResultState(text, type = "default") {
 
 function setGenerateBusy(active) {
   generateButton.disabled = active;
+  importCSVButton.disabled = active;
+  participantCSVFile.disabled = active;
   resetButton.disabled = active;
   clearLocksButton.disabled = active;
   copyModeSelect.disabled = active;
@@ -242,6 +328,7 @@ function getStorage() {
 function getDraftSettings() {
   return {
     participants: participantsInput.value,
+    participantRecords: participantRecords ? participantRecords.map((record) => ({ ...record })) : null,
     groupCount: groupCountInput.value,
     rollCount: rollCountInput.value,
     groupNames: groupNamesInput.value,
@@ -257,6 +344,7 @@ function getDraftSettings() {
 
 function applyDraftSettings(settings) {
   participantsInput.value = settings?.participants || "";
+  participantRecords = Array.isArray(settings?.participantRecords) ? settings.participantRecords : null;
   groupCountInput.value = settings?.groupCount || "3";
   rollCountInput.value = settings?.rollCount || String(DEFAULT_ROLL_COUNT);
   groupNamesInput.value = settings?.groupNames || "";
@@ -541,7 +629,7 @@ function parseGroupCapacities(value, groupCount, participantCount) {
 }
 
 function getInputs() {
-  const parsedParticipants = splitParticipants(participantsInput.value);
+  const parsedParticipants = getParticipantNames();
   const participants = uniqueItems(parsedParticipants);
   const duplicateCount = parsedParticipants.length - participants.length;
   const groupCount = Number(groupCountInput.value);
@@ -1108,7 +1196,7 @@ function renderSummary(participantCount, groupCount, ruleCount) {
 }
 
 function renderDraftStats() {
-  const participants = uniqueItems(splitParticipants(participantsInput.value));
+  const participants = uniqueItems(getParticipantNames());
   const rules =
     splitLines(togetherInput.value).length +
     splitLines(separateInput.value).length +
@@ -1408,7 +1496,7 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
 }
 
 function getSettingsMeta(settings) {
-  const participantCount = splitParticipants(settings.participants).length;
+  const participantCount = getParticipantNames(settings.participants, settings.participantRecords || null).length;
   const ruleCount =
     splitLines(settings.together).length +
     splitLines(settings.separate).length +
@@ -1910,6 +1998,8 @@ function handleSavedNameKeydown(event) {
   }
 }
 
+importCSVButton.addEventListener("click", () => participantCSVFile.click());
+participantCSVFile.addEventListener("change", importParticipantCSV);
 twoStageInput.addEventListener("change", syncTwoStageControls);
 generateButton.addEventListener("click", generate);
 resetButton.addEventListener("click", () => reset());
@@ -1927,6 +2017,7 @@ rollCountInput.addEventListener("keydown", handleSingleLineKeydown);
 savedSettingsNameInput.addEventListener("keydown", handleSavedNameKeydown);
 getInputFields().forEach((input) => {
   input.addEventListener("input", () => {
+    if (input === participantsInput) participantRecords = null;
     syncTwoStageControls();
     input.removeAttribute("aria-invalid");
     renderDraftStats();
