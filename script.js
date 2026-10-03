@@ -17,6 +17,7 @@ const undoEditButton = document.querySelector("#undoEditButton");
 const clearLocksButton = document.querySelector("#clearLocksButton");
 const copyModeSelect = document.querySelector("#copyModeSelect");
 const copyButton = document.querySelector("#copyButton");
+const exportCSVButton = document.querySelector("#exportCSVButton");
 const statusMessage = document.querySelector("#statusMessage");
 const groupsGrid = document.querySelector("#groupsGrid");
 const emptyState = document.querySelector("#emptyState");
@@ -1272,6 +1273,7 @@ function createResultSnapshot() {
 
 function updateUndoButtonState() {
   undoEditButton.disabled = isGenerating || !lastPlan || editHistory.length === 0;
+  exportCSVButton.disabled = isGenerating || !lastPlan;
 }
 
 function clearEditHistory() {
@@ -1911,6 +1913,44 @@ function formatCopyResult(plan, groupNames, auditItems, mode, roleAssignments = 
   return groupedText;
 }
 
+function encodeCSVCell(value) {
+  const text = String(value);
+  return /[",\r\n]/u.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function buildResultCSV(plan, groupNames, roleAssignments = null) {
+  const rows = [roleAssignments ? ["group", "role", "name"] : ["group", "name"]];
+  plan.forEach((group, index) => {
+    const roleByMember = new Map((roleAssignments?.[index] || []).map((entry) => [entry.member, entry.role]));
+    const orderedMembers = roleAssignments?.[index]?.map((entry) => entry.member) || group;
+    orderedMembers.forEach((member) => {
+      rows.push(roleAssignments ? [groupNames[index], roleByMember.get(member) || "", member] : [groupNames[index], member]);
+    });
+  });
+  return rows.map((row) => row.map(encodeCSVCell).join(",")).join("\r\n") + "\r\n";
+}
+
+function downloadText(filename, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function exportResultCSV() {
+  if (!lastPlan || isGenerating) {
+    setStatus("내보낼 결과가 없습니다.", "error");
+    return;
+  }
+  const csv = buildResultCSV(lastPlan, getGroupNames(lastPlan.length), lastRoleAssignments);
+  downloadText("TeamBuilder-result.csv", "\uFEFF" + csv, "text/csv;charset=utf-8");
+  setStatus("CSV 결과를 내보냈습니다.", "success");
+}
+
 async function copyResult() {
   if (!lastPlan) {
     setStatus("복사할 결과가 없습니다.", "error");
@@ -2006,6 +2046,7 @@ resetButton.addEventListener("click", () => reset());
 undoEditButton.addEventListener("click", undoLastEdit);
 clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
+exportCSVButton.addEventListener("click", exportResultCSV);
 saveSettingsButton.addEventListener("click", saveCurrentSettings);
 updateSettingsButton.addEventListener("click", updateCurrentSavedSetting);
 [participantsInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {
