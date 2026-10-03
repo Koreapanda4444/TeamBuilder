@@ -2,6 +2,7 @@ const participantsInput = document.querySelector("#participantsInput");
 const groupCountInput = document.querySelector("#groupCountInput");
 const rollCountInput = document.querySelector("#rollCountInput");
 const groupNamesInput = document.querySelector("#groupNamesInput");
+const groupCapacitiesInput = document.querySelector("#groupCapacitiesInput");
 const togetherInput = document.querySelector("#togetherInput");
 const separateInput = document.querySelector("#separateInput");
 const fixedInput = document.querySelector("#fixedInput");
@@ -161,7 +162,7 @@ function waitForResultPaint() {
 }
 
 function getInputFields() {
-  return [participantsInput, groupCountInput, rollCountInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput];
+  return [participantsInput, groupCountInput, rollCountInput, groupNamesInput, groupCapacitiesInput, togetherInput, separateInput, fixedInput, attributesInput];
 }
 
 function clearFieldValidity() {
@@ -190,6 +191,10 @@ function markInvalidFields(errors) {
 
     if (error.includes("그룹 이름")) {
       markFieldInvalid(groupNamesInput);
+    }
+
+    if (error.includes("정원") || error.includes("그룹별 인원")) {
+      markFieldInvalid(groupCapacitiesInput);
     }
 
     if (error.includes("함께")) {
@@ -228,6 +233,7 @@ function getDraftSettings() {
     groupCount: groupCountInput.value,
     rollCount: rollCountInput.value,
     groupNames: groupNamesInput.value,
+    groupCapacities: groupCapacitiesInput.value,
     together: togetherInput.value,
     separate: separateInput.value,
     fixed: fixedInput.value,
@@ -240,6 +246,7 @@ function applyDraftSettings(settings) {
   groupCountInput.value = settings?.groupCount || "3";
   rollCountInput.value = settings?.rollCount || String(DEFAULT_ROLL_COUNT);
   groupNamesInput.value = settings?.groupNames || "";
+  groupCapacitiesInput.value = settings?.groupCapacities || "";
   togetherInput.value = settings?.together || "";
   separateInput.value = settings?.separate || "";
   fixedInput.value = settings?.fixed || "";
@@ -478,6 +485,21 @@ function validateGroupNames(groupCount) {
   return duplicates.length ? [`그룹 이름이 중복되어 있습니다: ${duplicates.join(", ")}`] : [];
 }
 
+function parseGroupCapacities(value, groupCount, participantCount) {
+  if (!value.trim()) return { capacities: null, errors: [] };
+  const tokens = value.split(",").map((token) => token.trim());
+  const errors = [];
+  if (tokens.length !== groupCount) errors.push("그룹별 인원 값 개수는 그룹 수와 같아야 합니다.");
+  if (tokens.some((token) => !/^[0-9]+$/.test(token) || !Number.isSafeInteger(Number(token)) || Number(token) < 1)) {
+    errors.push("그룹별 인원은 모두 1 이상의 정수여야 합니다.");
+  }
+  const capacities = tokens.map(Number);
+  if (!errors.length && capacities.reduce((sum, size) => sum + size, 0) !== participantCount) {
+    errors.push("그룹별 인원의 합계는 참가자 수와 같아야 합니다.");
+  }
+  return { capacities, errors };
+}
+
 function getInputs() {
   const parsedParticipants = splitParticipants(participantsInput.value);
   const participants = uniqueItems(parsedParticipants);
@@ -512,12 +534,14 @@ function getInputs() {
   const fixed = parseFixedRules(fixedInput.value, participants, groupCount);
   const attributes = parseAttributeRules(attributesInput.value, participants);
   const groupNameErrors = validateGroupNames(groupCount);
+  const capacityInput = parseGroupCapacities(groupCapacitiesInput.value, groupCount, participants.length);
 
-  errors.push(...groupNameErrors, ...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
+  errors.push(...capacityInput.errors, ...groupNameErrors, ...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
 
   return {
     participants,
     groupCount,
+    capacities: capacityInput.capacities,
     rollCount,
     groupNames: getGroupNames(groupCount),
     attempts,
@@ -688,7 +712,7 @@ function validatePreflight(input, components, fixedTargets, maxTargetSize) {
   });
 
   fixedSizeByGroup.forEach((size, groupIndex) => {
-    if (size > maxTargetSize) {
+    if (size > (input.capacities?.[groupIndex] ?? maxTargetSize)) {
       errors.push(`${groupIndex + 1}그룹에 고정된 인원이 너무 많습니다.`);
     }
   });
@@ -877,7 +901,7 @@ function validatePlan(plan, togetherRules, separateRules, fixedRules = [], attri
 
 function buildPlan(input) {
   const components = createComponents(input.participants, input.togetherRules);
-  const maxTargetSize = Math.ceil(input.participants.length / input.groupCount);
+  const maxTargetSize = input.capacities ? Math.max(...input.capacities) : Math.ceil(input.participants.length / input.groupCount);
   const componentTooLarge = components.find((component) => component.size > maxTargetSize);
 
   if (componentTooLarge) {
@@ -922,7 +946,7 @@ function buildPlan(input) {
   let bestScore = Infinity;
 
   for (let attempt = 0; attempt < input.attempts; attempt += 1) {
-    const targetSizes = getTargetSizes(input.participants.length, input.groupCount);
+    const targetSizes = input.capacities || getTargetSizes(input.participants.length, input.groupCount);
     const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets);
 
     if (plan) {
@@ -1824,6 +1848,7 @@ updateSettingsButton.addEventListener("click", updateCurrentSavedSetting);
   input.addEventListener("keydown", handleInputKeydown);
 });
 groupCountInput.addEventListener("keydown", handleSingleLineKeydown);
+groupCapacitiesInput.addEventListener("keydown", handleSingleLineKeydown);
 rollCountInput.addEventListener("keydown", handleSingleLineKeydown);
 savedSettingsNameInput.addEventListener("keydown", handleSavedNameKeydown);
 getInputFields().forEach((input) => {

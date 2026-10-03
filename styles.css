@@ -942,3 +942,8 @@ select:focus-visible,
 .rule-feedback p {
   margin: 8px 0 0;
 }
+
+#groupCapacitiesInput {
+  min-height: 34px;
+  padding: 0 10px;
+}
