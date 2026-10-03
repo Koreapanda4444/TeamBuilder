@@ -513,6 +513,18 @@ function parseRoleList(value, enabled = true) {
   return { roles, roleCount: roles.length, errors };
 }
 
+function validateNestedCapacities(participantCount, groupCount, capacities, roleCount) {
+  if (!Number.isInteger(groupCount) || groupCount < 2 || !roleCount) return [];
+  if (capacities) {
+    if (capacities.some((size) => size !== roleCount)) {
+      return ["2단계 배정은 모든 그룹의 정원과 역할 수가 같아야 합니다."];
+    }
+  } else if (participantCount !== groupCount * roleCount) {
+    return ["2단계 배정은 각 그룹 인원과 역할 수가 같아야 합니다."];
+  }
+  return [];
+}
+
 function parseGroupCapacities(value, groupCount, participantCount) {
   if (!value.trim()) return { capacities: null, errors: [] };
   const tokens = value.split(",").map((token) => token.trim());
@@ -564,6 +576,10 @@ function getInputs() {
   const groupNameErrors = validateGroupNames(groupCount);
   const capacityInput = parseGroupCapacities(groupCapacitiesInput.value, groupCount, participants.length);
   const roleInput = parseRoleList(rolesInput.value, twoStageInput.checked);
+
+  if (twoStageInput.checked && !capacityInput.errors.length && !roleInput.errors.length) {
+    errors.push(...validateNestedCapacities(participants.length, groupCount, capacityInput.capacities, roleInput.roleCount));
+  }
 
   errors.push(...roleInput.errors, ...capacityInput.errors, ...groupNameErrors, ...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
 
@@ -1142,6 +1158,7 @@ function getValidLockedRules(participants, groupCount) {
 }
 
 function assignRolesToPlan(plan, roles) {
+  if (plan.some((group) => group.length !== roles.length)) throw new Error("그룹 인원과 역할 수가 같아야 합니다.");
   return plan.map((group) => shuffle(group).map((member, index) => ({ member, role: roles[index] || "" })));
 }
 
