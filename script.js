@@ -16,6 +16,7 @@ const statusMessage = document.querySelector("#statusMessage");
 const groupsGrid = document.querySelector("#groupsGrid");
 const emptyState = document.querySelector("#emptyState");
 const auditList = document.querySelector("#auditList");
+const ruleFeedback = document.querySelector("#ruleFeedback");
 const participantCount = document.querySelector("#participantCount");
 const participantPreview = document.querySelector("#participantPreview");
 const resultState = document.querySelector("#resultState");
@@ -1571,51 +1572,34 @@ function getAuditHint(item) {
   return "";
 }
 
+function getPublicAudit(items, hasResult = Boolean(lastPlan)) {
+  const failed = items.some((item) => item.type === "error" || item.title === "생성 실패");
+  if (failed) {
+    return [{ type: "error", title: "입력 확인", detail: "입력을 확인한 뒤 다시 시도하세요." }];
+  }
+  if (hasResult || items.length) {
+    return [{ type: "ok", title: "배정 완료", detail: "입력 조건을 만족하는 결과입니다." }];
+  }
+  return [{ type: "ok", title: "대기 중", detail: "결과 없음" }];
+}
+
 function renderAudit(items, input = null) {
-  lastAudit = items;
+  ruleFeedback.innerHTML = "";
+  items.filter((item) => item.type === "error" || item.title === "생성 실패").forEach((item) => {
+    const detail = document.createElement("p");
+    detail.textContent = item.detail;
+    ruleFeedback.append(detail);
+  });
+  lastAudit = getPublicAudit(items);
   auditList.innerHTML = "";
-
-  if (input?.duplicateCount) {
-    items = [
-      {
-        type: "warning",
-        title: "중복 이름 제거",
-        detail: `${input.duplicateCount}개의 중복 참가자를 한 번만 반영했습니다.`,
-      },
-      ...items,
-    ];
-  }
-
-  if (!items.length) {
-    items = [
-      {
-        type: "ok",
-        title: "대기 중",
-        detail: "검토 없음",
-      },
-    ];
-  }
-
-  lastAudit = items;
-
-  for (const item of items) {
+  for (const item of lastAudit) {
     const element = document.createElement("div");
     element.className = `audit-item is-${item.type}`;
-
     const title = document.createElement("strong");
     const detail = document.createElement("span");
-    const hintText = item.hint || getAuditHint(item);
-
     title.textContent = item.title;
     detail.textContent = item.detail;
     element.append(title, detail);
-
-    if (hintText) {
-      const hint = document.createElement("em");
-      hint.textContent = hintText;
-      element.append(hint);
-    }
-
     auditList.append(element);
   }
 }
@@ -1650,7 +1634,7 @@ async function generate() {
         input,
       );
       setResultState("오류", "error");
-      setStatus(input.errors[0], "error");
+      setStatus("입력을 확인한 뒤 다시 시도하세요.", "error");
       return;
     }
 
@@ -1684,7 +1668,7 @@ async function generate() {
       renderGroups(null);
       renderAudit(result.audit, input);
       setResultState("실패", "error");
-      setStatus(result.error, "error");
+      setStatus("입력을 확인한 뒤 다시 시도하세요.", "error");
       return;
     }
 
@@ -1718,7 +1702,7 @@ function formatCopyResult(plan, groupNames, auditItems, mode) {
   const numberedText = plan.map((group, index) => `${index + 1}. ${groupNames[index]}: ${group.join(", ")}`).join("\n");
   const chatText = plan.map((group, index) => `[${groupNames[index]}] ${group.join(", ")}`).join("\n");
   const compactText = plan.map((group, index) => `${groupNames[index]}: ${group.join(", ")}`).join(" / ");
-  const auditText = auditItems.map((item) => `- ${item.title}: ${item.detail}`).join("\n");
+  const auditText = getPublicAudit(auditItems, true).map((item) => `- ${item.title}: ${item.detail}`).join("\n");
 
   if (mode === "names") {
     return namesOnlyText;
