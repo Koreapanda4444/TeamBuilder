@@ -200,6 +200,10 @@ function markInvalidFields(errors) {
       markFieldInvalid(groupNamesInput);
     }
 
+    if (error.includes("역할") || error.includes("2단계")) {
+      markFieldInvalid(rolesInput);
+    }
+
     if (error.includes("정원") || error.includes("그룹별 인원")) {
       markFieldInvalid(groupCapacitiesInput);
     }
@@ -497,6 +501,17 @@ function validateGroupNames(groupCount) {
   return duplicates.length ? [`그룹 이름이 중복되어 있습니다: ${duplicates.join(", ")}`] : [];
 }
 
+function parseRoleList(value, enabled = true) {
+  if (!enabled) return { roles: [], roleCount: 0, errors: [] };
+  const roles = value.split(",").map((role) => role.trim()).filter(Boolean);
+  const errors = [];
+  if (!roles.length) errors.push("2단계 배정에 사용할 역할을 입력하세요.");
+  const duplicates = duplicateItems(roles);
+  if (duplicates.length) errors.push(`역할이 중복되어 있습니다: ${duplicates.join(", ")}`);
+  if (roles.some((role) => /[\u0000-\u001f\u007f]/u.test(role))) errors.push("역할에는 줄바꿈이나 제어 문자를 사용할 수 없습니다.");
+  return { roles, roleCount: roles.length, errors };
+}
+
 function parseGroupCapacities(value, groupCount, participantCount) {
   if (!value.trim()) return { capacities: null, errors: [] };
   const tokens = value.split(",").map((token) => token.trim());
@@ -547,13 +562,17 @@ function getInputs() {
   const attributes = parseAttributeRules(attributesInput.value, participants);
   const groupNameErrors = validateGroupNames(groupCount);
   const capacityInput = parseGroupCapacities(groupCapacitiesInput.value, groupCount, participants.length);
+  const roleInput = parseRoleList(rolesInput.value, twoStageInput.checked);
 
-  errors.push(...capacityInput.errors, ...groupNameErrors, ...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
+  errors.push(...roleInput.errors, ...capacityInput.errors, ...groupNameErrors, ...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
 
   return {
     participants,
     groupCount,
     capacities: capacityInput.capacities,
+    twoStage: twoStageInput.checked,
+    roles: roleInput.roles,
+    roleCount: roleInput.roleCount,
     rollCount,
     groupNames: getGroupNames(groupCount),
     attempts,
