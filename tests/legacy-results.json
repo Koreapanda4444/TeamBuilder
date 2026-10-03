@@ -1,0 +1,2299 @@
+{
+  "sourceCommit": "f2c12d4c576def46e862e66acd2d003ac3d82b1a",
+  "fixtures": [
+    {
+      "name": "general",
+      "seed": 1,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "B",
+          "A",
+          "J"
+        ],
+        [
+          "E",
+          "D",
+          "C"
+        ],
+        [
+          "H",
+          "F",
+          "I",
+          "G"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 2,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "C",
+          "J",
+          "E"
+        ],
+        [
+          "H",
+          "G",
+          "F"
+        ],
+        [
+          "A",
+          "B",
+          "I",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 3,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "D",
+          "E",
+          "F"
+        ],
+        [
+          "J",
+          "H",
+          "C"
+        ],
+        [
+          "G",
+          "I",
+          "A",
+          "B"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 5,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "G",
+          "A",
+          "J"
+        ],
+        [
+          "E",
+          "C",
+          "I"
+        ],
+        [
+          "B",
+          "H",
+          "F",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 8,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "J",
+          "E",
+          "D"
+        ],
+        [
+          "H",
+          "F",
+          "B"
+        ],
+        [
+          "C",
+          "I",
+          "G",
+          "A"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 13,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "H",
+          "B",
+          "D"
+        ],
+        [
+          "C",
+          "A",
+          "F"
+        ],
+        [
+          "E",
+          "I",
+          "G",
+          "J"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 21,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "D",
+          "A",
+          "H"
+        ],
+        [
+          "I",
+          "C",
+          "J"
+        ],
+        [
+          "E",
+          "B",
+          "G",
+          "F"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 34,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "E",
+          "I",
+          "B"
+        ],
+        [
+          "D",
+          "F",
+          "H"
+        ],
+        [
+          "G",
+          "C",
+          "J",
+          "A"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 55,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "G",
+          "I",
+          "A"
+        ],
+        [
+          "C",
+          "F",
+          "E"
+        ],
+        [
+          "H",
+          "J",
+          "B",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 89,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "D",
+          "G",
+          "F"
+        ],
+        [
+          "H",
+          "C",
+          "I"
+        ],
+        [
+          "A",
+          "J",
+          "B",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 144,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "G",
+          "A",
+          "J"
+        ],
+        [
+          "I",
+          "C",
+          "E"
+        ],
+        [
+          "B",
+          "D",
+          "H",
+          "F"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "general",
+      "seed": 233,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "D",
+          "E",
+          "G"
+        ],
+        [
+          "J",
+          "H",
+          "I"
+        ],
+        [
+          "C",
+          "A",
+          "B",
+          "F"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 1,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "H",
+          "B",
+          "A"
+        ],
+        [
+          "C",
+          "J",
+          "G"
+        ],
+        [
+          "F",
+          "I",
+          "D",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 2,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "D",
+          "J",
+          "E"
+        ],
+        [
+          "G",
+          "C",
+          "H"
+        ],
+        [
+          "F",
+          "I",
+          "B",
+          "A"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 3,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "D",
+          "E",
+          "I"
+        ],
+        [
+          "B",
+          "A",
+          "F"
+        ],
+        [
+          "H",
+          "G",
+          "C",
+          "J"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 5,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "B",
+          "I",
+          "A"
+        ],
+        [
+          "D",
+          "F",
+          "E"
+        ],
+        [
+          "G",
+          "H",
+          "J",
+          "C"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 8,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "J",
+          "G",
+          "I"
+        ],
+        [
+          "A",
+          "H",
+          "B"
+        ],
+        [
+          "F",
+          "C",
+          "D",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 13,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "J",
+          "H",
+          "C"
+        ],
+        [
+          "I",
+          "B",
+          "A"
+        ],
+        [
+          "E",
+          "F",
+          "G",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 21,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "F",
+          "H",
+          "C"
+        ],
+        [
+          "G",
+          "A",
+          "B"
+        ],
+        [
+          "I",
+          "D",
+          "J",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 34,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "G",
+          "C",
+          "H"
+        ],
+        [
+          "B",
+          "F",
+          "A"
+        ],
+        [
+          "J",
+          "I",
+          "E",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 55,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "E",
+          "D",
+          "H"
+        ],
+        [
+          "F",
+          "G",
+          "C"
+        ],
+        [
+          "A",
+          "J",
+          "B",
+          "I"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 89,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "B",
+          "A",
+          "C"
+        ],
+        [
+          "F",
+          "E",
+          "D"
+        ],
+        [
+          "G",
+          "J",
+          "H",
+          "I"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 144,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "C",
+          "I",
+          "H"
+        ],
+        [
+          "F",
+          "A",
+          "B"
+        ],
+        [
+          "J",
+          "G",
+          "D",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "together",
+      "seed": 233,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "I",
+          "B",
+          "A"
+        ],
+        [
+          "H",
+          "C",
+          "G"
+        ],
+        [
+          "J",
+          "D",
+          "F",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 1,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "B",
+          "F",
+          "J"
+        ],
+        [
+          "E",
+          "D",
+          "C"
+        ],
+        [
+          "H",
+          "G",
+          "I",
+          "A"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 2,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "E",
+          "J",
+          "C"
+        ],
+        [
+          "B",
+          "H",
+          "F"
+        ],
+        [
+          "I",
+          "D",
+          "A",
+          "G"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 3,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "B",
+          "E",
+          "F"
+        ],
+        [
+          "J",
+          "H",
+          "C"
+        ],
+        [
+          "D",
+          "I",
+          "A",
+          "G"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 5,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "G",
+          "A",
+          "J"
+        ],
+        [
+          "E",
+          "C",
+          "I"
+        ],
+        [
+          "B",
+          "H",
+          "F",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 8,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "D",
+          "C",
+          "J"
+        ],
+        [
+          "B",
+          "E",
+          "H"
+        ],
+        [
+          "F",
+          "G",
+          "I",
+          "A"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 13,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "D",
+          "H",
+          "C"
+        ],
+        [
+          "G",
+          "F",
+          "A"
+        ],
+        [
+          "J",
+          "I",
+          "E",
+          "B"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 21,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "D",
+          "A",
+          "H"
+        ],
+        [
+          "I",
+          "C",
+          "J"
+        ],
+        [
+          "E",
+          "B",
+          "G",
+          "F"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 34,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "B",
+          "E",
+          "H"
+        ],
+        [
+          "A",
+          "F",
+          "D"
+        ],
+        [
+          "C",
+          "I",
+          "G",
+          "J"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 55,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "G",
+          "I",
+          "A"
+        ],
+        [
+          "C",
+          "F",
+          "E"
+        ],
+        [
+          "H",
+          "J",
+          "B",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 89,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "D",
+          "G",
+          "B"
+        ],
+        [
+          "H",
+          "C",
+          "I"
+        ],
+        [
+          "A",
+          "J",
+          "F",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 144,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "G",
+          "A",
+          "J"
+        ],
+        [
+          "I",
+          "C",
+          "E"
+        ],
+        [
+          "B",
+          "D",
+          "H",
+          "F"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "separate",
+      "seed": 233,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "E",
+          "G",
+          "C"
+        ],
+        [
+          "J",
+          "I",
+          "A"
+        ],
+        [
+          "D",
+          "B",
+          "F",
+          "H"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 1,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "J",
+          "C",
+          "A"
+        ],
+        [
+          "I",
+          "B",
+          "E"
+        ],
+        [
+          "D",
+          "F",
+          "H",
+          "G"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 2,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "H",
+          "D",
+          "A"
+        ],
+        [
+          "B",
+          "J",
+          "E"
+        ],
+        [
+          "F",
+          "G",
+          "I",
+          "C"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 3,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "H",
+          "A",
+          "D"
+        ],
+        [
+          "E",
+          "J",
+          "B"
+        ],
+        [
+          "G",
+          "I",
+          "F",
+          "C"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 5,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "D",
+          "A",
+          "G"
+        ],
+        [
+          "B",
+          "C",
+          "E"
+        ],
+        [
+          "J",
+          "H",
+          "F",
+          "I"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 8,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "J",
+          "E",
+          "A"
+        ],
+        [
+          "H",
+          "F",
+          "B"
+        ],
+        [
+          "C",
+          "I",
+          "G",
+          "D"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 13,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "C",
+          "E",
+          "A"
+        ],
+        [
+          "J",
+          "H",
+          "B"
+        ],
+        [
+          "I",
+          "D",
+          "F",
+          "G"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 21,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "C",
+          "H",
+          "A"
+        ],
+        [
+          "F",
+          "G",
+          "B"
+        ],
+        [
+          "D",
+          "E",
+          "I",
+          "J"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 34,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "C",
+          "G",
+          "A"
+        ],
+        [
+          "B",
+          "E",
+          "D"
+        ],
+        [
+          "H",
+          "F",
+          "J",
+          "I"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 55,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "F",
+          "A",
+          "C"
+        ],
+        [
+          "B",
+          "J",
+          "H"
+        ],
+        [
+          "E",
+          "D",
+          "G",
+          "I"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 89,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "J",
+          "A",
+          "I"
+        ],
+        [
+          "H",
+          "B",
+          "G"
+        ],
+        [
+          "D",
+          "C",
+          "F",
+          "E"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 144,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "G",
+          "A",
+          "J"
+        ],
+        [
+          "C",
+          "B",
+          "I"
+        ],
+        [
+          "D",
+          "F",
+          "E",
+          "H"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "fixed",
+      "seed": 233,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "E",
+          "I",
+          "A"
+        ],
+        [
+          "B",
+          "H",
+          "J"
+        ],
+        [
+          "D",
+          "F",
+          "G",
+          "C"
+        ]
+      ],
+      "score": 0
+    },
+    {
+      "name": "attributes",
+      "seed": 1,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "G",
+          "A",
+          "D"
+        ],
+        [
+          "C",
+          "I",
+          "J",
+          "F"
+        ],
+        [
+          "E",
+          "H",
+          "B"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 2,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "D",
+          "J",
+          "H"
+        ],
+        [
+          "C",
+          "G",
+          "E",
+          "B"
+        ],
+        [
+          "I",
+          "A",
+          "F"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 3,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "F",
+          "J",
+          "H"
+        ],
+        [
+          "D",
+          "I",
+          "C",
+          "B"
+        ],
+        [
+          "E",
+          "G",
+          "A"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 5,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "I",
+          "J",
+          "E"
+        ],
+        [
+          "A",
+          "D",
+          "C",
+          "G"
+        ],
+        [
+          "B",
+          "H",
+          "F"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 8,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "J",
+          "E",
+          "H"
+        ],
+        [
+          "D",
+          "C",
+          "G"
+        ],
+        [
+          "A",
+          "F",
+          "I",
+          "B"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 13,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "H",
+          "D",
+          "J",
+          "A"
+        ],
+        [
+          "F",
+          "G",
+          "B"
+        ],
+        [
+          "E",
+          "C",
+          "I"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 21,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "B",
+          "D",
+          "H",
+          "A"
+        ],
+        [
+          "E",
+          "J",
+          "G"
+        ],
+        [
+          "I",
+          "C",
+          "F"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 34,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "D",
+          "I",
+          "C"
+        ],
+        [
+          "A",
+          "E",
+          "H",
+          "B"
+        ],
+        [
+          "F",
+          "G",
+          "J"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 55,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "A",
+          "I",
+          "D"
+        ],
+        [
+          "E",
+          "H",
+          "B"
+        ],
+        [
+          "C",
+          "J",
+          "F",
+          "G"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 89,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "C",
+          "E",
+          "G",
+          "A"
+        ],
+        [
+          "H",
+          "J",
+          "F"
+        ],
+        [
+          "D",
+          "B",
+          "I"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 144,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "I",
+          "D",
+          "C"
+        ],
+        [
+          "A",
+          "E",
+          "B",
+          "G"
+        ],
+        [
+          "J",
+          "H",
+          "F"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "attributes",
+      "seed": 233,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "J",
+          "H",
+          "D"
+        ],
+        [
+          "I",
+          "A",
+          "E"
+        ],
+        [
+          "B",
+          "F",
+          "C",
+          "G"
+        ]
+      ],
+      "score": 1
+    },
+    {
+      "name": "combined",
+      "seed": 1,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "A",
+          "B",
+          "G"
+        ],
+        [
+          "C",
+          "E",
+          "J"
+        ],
+        [
+          "H",
+          "D",
+          "I",
+          "F"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 2,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "A",
+          "G",
+          "B"
+        ],
+        [
+          "J",
+          "F",
+          "D"
+        ],
+        [
+          "E",
+          "H",
+          "C",
+          "I"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 3,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "E",
+          "A",
+          "B"
+        ],
+        [
+          "F",
+          "G",
+          "J",
+          "D"
+        ],
+        [
+          "H",
+          "C",
+          "I"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 5,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "A",
+          "D",
+          "B"
+        ],
+        [
+          "C",
+          "H",
+          "J",
+          "F"
+        ],
+        [
+          "I",
+          "E",
+          "G"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 8,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "H",
+          "B",
+          "A",
+          "E"
+        ],
+        [
+          "I",
+          "F",
+          "D"
+        ],
+        [
+          "C",
+          "G",
+          "J"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 13,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "E",
+          "A",
+          "B"
+        ],
+        [
+          "H",
+          "C",
+          "F"
+        ],
+        [
+          "G",
+          "D",
+          "I",
+          "J"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 21,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "D",
+          "B",
+          "A"
+        ],
+        [
+          "I",
+          "J",
+          "F",
+          "G"
+        ],
+        [
+          "E",
+          "C",
+          "H"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 34,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "B",
+          "D",
+          "A"
+        ],
+        [
+          "F",
+          "H",
+          "E"
+        ],
+        [
+          "G",
+          "J",
+          "C",
+          "I"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 55,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "I",
+          "A",
+          "B"
+        ],
+        [
+          "F",
+          "D",
+          "J"
+        ],
+        [
+          "C",
+          "E",
+          "G",
+          "H"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 89,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "D",
+          "B",
+          "A"
+        ],
+        [
+          "I",
+          "G",
+          "H"
+        ],
+        [
+          "J",
+          "C",
+          "F",
+          "E"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 144,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "G",
+          "A",
+          "B"
+        ],
+        [
+          "E",
+          "D",
+          "I"
+        ],
+        [
+          "C",
+          "F",
+          "J",
+          "H"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "combined",
+      "seed": 233,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "1",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "A",
+          "B",
+          "H"
+        ],
+        [
+          "F",
+          "G",
+          "C"
+        ],
+        [
+          "I",
+          "E",
+          "J",
+          "D"
+        ]
+      ],
+      "score": 3
+    },
+    {
+      "name": "rolled-general",
+      "seed": 42,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "5",
+        "groupCount": "3"
+      },
+      "plan": [
+        [
+          "E",
+          "J",
+          "D",
+          "A"
+        ],
+        [
+          "G",
+          "B",
+          "F"
+        ],
+        [
+          "I",
+          "C",
+          "H"
+        ]
+      ],
+      "score": 0,
+      "selectedRoll": 2
+    },
+    {
+      "name": "rolled-together",
+      "seed": 42,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "5",
+        "groupCount": "3",
+        "together": "A-B\nD-E"
+      },
+      "plan": [
+        [
+          "B",
+          "A",
+          "H"
+        ],
+        [
+          "J",
+          "G",
+          "F",
+          "I"
+        ],
+        [
+          "D",
+          "C",
+          "E"
+        ]
+      ],
+      "score": 0,
+      "selectedRoll": 5
+    },
+    {
+      "name": "rolled-separate",
+      "seed": 42,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "5",
+        "groupCount": "3",
+        "separate": "A-B-C"
+      },
+      "plan": [
+        [
+          "E",
+          "F",
+          "B"
+        ],
+        [
+          "I",
+          "D",
+          "C"
+        ],
+        [
+          "A",
+          "J",
+          "H",
+          "G"
+        ]
+      ],
+      "score": 0,
+      "selectedRoll": 5
+    },
+    {
+      "name": "rolled-fixed",
+      "seed": 42,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "5",
+        "groupCount": "3",
+        "fixed": "A=1\nB=2"
+      },
+      "plan": [
+        [
+          "C",
+          "E",
+          "A",
+          "F"
+        ],
+        [
+          "I",
+          "H",
+          "B"
+        ],
+        [
+          "G",
+          "J",
+          "D"
+        ]
+      ],
+      "score": 0,
+      "selectedRoll": 2
+    },
+    {
+      "name": "rolled-attributes",
+      "seed": 42,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "5",
+        "groupCount": "3",
+        "attributes": "A=X\nB=X\nC=X\nD=Y\nE=Y\nF=Y\nG=Z\nH=Z\nI=Z\nJ=X"
+      },
+      "plan": [
+        [
+          "J",
+          "A",
+          "F",
+          "H"
+        ],
+        [
+          "C",
+          "D",
+          "I"
+        ],
+        [
+          "B",
+          "G",
+          "E"
+        ]
+      ],
+      "score": 1,
+      "selectedRoll": 5
+    },
+    {
+      "name": "rolled-combined",
+      "seed": 42,
+      "settings": {
+        "participants": "A,B,C,D,E,F,G,H,I,J",
+        "rollCount": "5",
+        "groupCount": "3",
+        "together": "A-B",
+        "separate": "A-C",
+        "fixed": "A=1",
+        "attributes": "A=X\nB=X\nC=Y\nD=Y"
+      },
+      "plan": [
+        [
+          "B",
+          "H",
+          "A"
+        ],
+        [
+          "G",
+          "I",
+          "C"
+        ],
+        [
+          "F",
+          "J",
+          "E",
+          "D"
+        ]
+      ],
+      "score": 3,
+      "selectedRoll": 2
+    }
+  ]
+}

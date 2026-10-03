@@ -41,6 +41,7 @@ const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput")
 let participantRecords = null;
 let lastPlan = null;
 let lastRoleAssignments = null;
+let lastCapacities = null;
 let lastAudit = [];
 let savedSettings = [];
 let activeSavedSettingId = null;
@@ -582,7 +583,7 @@ function parseAttributeRules(value, names) {
 
 function getGroupNames(groupCount) {
   const names = splitLines(groupNamesInput.value);
-  const count = Number.isInteger(groupCount) && groupCount > 0 ? groupCount : 0;
+  const count = Number.isInteger(groupCount) && groupCount > 0 && groupCount <= 24 ? groupCount : 0;
 
   return Array.from({ length: count }, (_, index) => names[index] || `${index + 1}그룹`);
 }
@@ -649,8 +650,8 @@ function getInputs() {
     errors.push("참가자는 최소 2명 이상이어야 합니다.");
   }
 
-  if (!Number.isInteger(groupCount) || groupCount < 2) {
-    errors.push("그룹 수는 2 이상이어야 합니다.");
+  if (!Number.isInteger(groupCount) || groupCount < 2 || groupCount > 24) {
+    errors.push("그룹 수는 2부터 24 사이의 정수여야 합니다.");
   }
 
   if (groupCount > participants.length) {
@@ -1198,21 +1199,15 @@ async function buildRolledPlan(input, onProgress = null) {
   return lastError || buildPlan(input);
 }
 
-function renderSummary(participantCount, groupCount, ruleCount) {
+function renderSummary(participantCount, groupCount) {
   summaryParticipants.textContent = String(participantCount);
   summaryGroups.textContent = String(groupCount);
 }
 
 function renderDraftStats() {
   const participants = uniqueItems(getParticipantNames());
-  const rules =
-    splitLines(togetherInput.value).length +
-    splitLines(separateInput.value).length +
-    splitLines(fixedInput.value).length +
-    splitLines(attributesInput.value).length;
-
   participantCount.textContent = `${participants.length}명`;
-  renderSummary(participants.length, Number(groupCountInput.value) || 0, rules);
+  renderSummary(participants.length, Number(groupCountInput.value) || 0);
 
   participantPreview.innerHTML = "";
   participants.slice(0, 18).forEach((participant) => {
@@ -1226,16 +1221,6 @@ function renderDraftStats() {
     chip.textContent = `+${participants.length - 18}`;
     participantPreview.append(chip);
   }
-}
-
-function getRuleCountFromInput(input, extraRules = []) {
-  return (
-    input.togetherRules.length +
-    input.separateRules.length +
-    input.fixedRules.length +
-    input.attributeRules.length +
-    extraRules.length
-  );
 }
 
 function getValidLockedRules(participants, groupCount) {
@@ -1274,6 +1259,7 @@ function createResultSnapshot() {
   return {
     plan: clonePlan(lastPlan),
     roleAssignments: cloneRoleAssignments(lastRoleAssignments),
+    capacities: lastCapacities ? [...lastCapacities] : null,
     locks: [...lockedAssignments.entries()],
   };
 }
@@ -1315,6 +1301,7 @@ function undoLastEdit() {
 
   lastPlan = clonePlan(snapshot.plan);
   lastRoleAssignments = cloneRoleAssignments(snapshot.roleAssignments);
+  lastCapacities = snapshot.capacities ? [...snapshot.capacities] : null;
   lockedAssignments = new Map(snapshot.locks);
   renderGroups(lastPlan);
   refreshAuditForCurrentPlan([
@@ -1359,7 +1346,7 @@ function refreshAuditForCurrentPlan(extraItems = []) {
     input.attributeRules,
   );
 
-  renderSummary(input.participants.length, input.groupCount, getRuleCountFromInput(input, lockedRules));
+  renderSummary(input.participants.length, input.groupCount);
   renderAudit([...extraItems, ...audit], input);
 }
 
@@ -1409,9 +1396,26 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
     return;
   }
 
+  const keepCapacities = Boolean(lastRoleAssignments || lastCapacities);
+  const swapMember = keepCapacities ? target.find((name) => !lockedAssignments.has(name)) : null;
+  if (keepCapacities && !swapMember) {
+    renderAudit([{ type: "error", title: "이동 확인", detail: "대상 그룹의 고정을 해제한 뒤 다시 이동하세요." }]);
+    setStatus("입력을 확인한 뒤 다시 시도하세요.", "error");
+    renderGroups(lastPlan);
+    return;
+  }
   pushEditHistory();
-  source.splice(memberIndex, 1);
-  target.push(member);
+  if (keepCapacities) {
+    source[memberIndex] = swapMember;
+    target[target.indexOf(swapMember)] = member;
+    if (lastRoleAssignments) {
+      lastRoleAssignments[fromGroupIndex].find((entry) => entry.member === member).member = swapMember;
+      lastRoleAssignments[toGroupIndex].find((entry) => entry.member === swapMember).member = member;
+    }
+  } else {
+    source.splice(memberIndex, 1);
+    target.push(member);
+  }
   lockedAssignments.set(member, toGroupIndex);
 
   const groupNames = getGroupNames(lastPlan.length);
@@ -1627,6 +1631,10 @@ function loadSavedSetting(item) {
   applyDraftSettings(item.settings);
   activeSavedSettingId = item.id;
   lastPlan = null;
+  lastRoleAssignments = null;
+  lastCapacities = null;
+  clearFieldValidity();
+  rulesPanel.open = false;
   lockedAssignments = new Map();
   clearEditHistory();
   renderDraftStats();
@@ -1687,76 +1695,6 @@ function applyLockedRules(input) {
   input.fixedRules = [...input.fixedRules, ...lockedRules];
 }
 
-function getAuditHint(item) {
-  if (!["error", "warning"].includes(item.type)) {
-    return "";
-  }
-
-  const text = `${item.title} ${item.detail}`;
-
-  if (text.includes("최소 2명")) {
-    return "명단에 참가자를 더 추가하세요.";
-  }
-
-  if (text.includes("그룹 수는 2")) {
-    return "그룹 수를 2 이상으로 입력하세요.";
-  }
-
-  if (text.includes("돌리기")) {
-    return "높게 잡을수록 더 오래 걸릴 수 있습니다.";
-  }
-
-  if (text.includes("참가자 수보다")) {
-    return "그룹 수를 줄이거나 참가자를 더 추가하세요.";
-  }
-
-  if (text.includes("이름을 2개 이상")) {
-    return "한 줄에 A-B처럼 2명 이상 입력하세요.";
-  }
-
-  if (text.includes("찾을 수 없습니다")) {
-    return "명단과 규칙의 표기를 같게 맞추세요.";
-  }
-
-  if (text.includes("반복") || text.includes("중복됩니다") || text.includes("이미 입력")) {
-    return "같은 이름이나 같은 줄을 한 번만 남기세요.";
-  }
-
-  if (text.includes("그룹 이름이 중복")) {
-    return "각 그룹 이름을 서로 다르게 입력하세요.";
-  }
-
-  if (text.includes("그룹 번호") || text.includes("범위를 벗어")) {
-    return "고정 배정은 A=1처럼 1부터 현재 그룹 수 사이의 번호를 쓰세요.";
-  }
-
-  if (text.includes("고정된 인원이 너무 많")) {
-    return "해당 그룹의 고정 배정을 줄이거나 그룹 수를 줄여 한 그룹당 인원을 늘리세요.";
-  }
-
-  if (text.includes("함께 묶인 인원이 너무 많")) {
-    return "함께 배정 줄을 나누거나 그룹 수를 줄여 한 그룹당 인원을 늘리세요.";
-  }
-
-  if (text.includes("모두 분리할 수")) {
-    return "분리 대상을 줄이거나 그룹 수를 늘리세요.";
-  }
-
-  if (text.includes("충돌")) {
-    return "함께 배정, 분리 배정, 고정 배정 중 서로 맞지 않는 줄을 줄이세요.";
-  }
-
-  if (text.includes("생성 실패") || text.includes("찾지 못했습니다")) {
-    return "분리 배정이나 고정 배정을 줄인 뒤 다시 생성하세요.";
-  }
-
-  if (text.includes("속성 균형 반영")) {
-    return "완전 균등이 아니면 속성 값을 더 고르게 입력하거나 그룹 수를 조정하세요.";
-  }
-
-  return "";
-}
-
 function getPublicAudit(items, hasResult = Boolean(lastPlan)) {
   const failed = items.some((item) => item.type === "error" || item.title === "생성 실패");
   if (failed) {
@@ -1800,13 +1738,13 @@ async function generate() {
   try {
     const input = getInputs();
     applyLockedRules(input);
-    const ruleCount = getRuleCountFromInput(input);
     renderDraftStats();
-    renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0, ruleCount);
+    renderSummary(input.participants.length, Number.isFinite(input.groupCount) ? input.groupCount : 0);
 
     if (input.errors.length) {
       lastPlan = null;
       lastRoleAssignments = null;
+      lastCapacities = null;
       lastAudit = [];
       markInvalidFields(input.errors);
       clearEditHistory();
@@ -1849,6 +1787,7 @@ async function generate() {
     if (result.error) {
       lastPlan = null;
       lastRoleAssignments = null;
+      lastCapacities = null;
       lastAudit = result.audit;
       markInvalidFields([result.error]);
       clearEditHistory();
@@ -1861,6 +1800,7 @@ async function generate() {
 
     lastPlan = result.plan;
     lastRoleAssignments = input.twoStage ? assignRolesToPlan(result.plan, input.roles) : null;
+    lastCapacities = input.capacities ? [...input.capacities] : null;
     lastAudit = result.audit;
     clearFieldValidity();
     clearEditHistory();
@@ -2019,6 +1959,7 @@ function restoreSettings(settings) {
   savedSettingsNameInput.value = "";
   lastPlan = null;
   lastRoleAssignments = null;
+  lastCapacities = null;
   lastAudit = [];
   lockedAssignments = new Map();
   clearEditHistory();
@@ -2054,8 +1995,11 @@ async function importSettingsJSON(event) {
 
 function reset() {
   applyDraftSettings(null);
+  rulesPanel.open = false;
+  clearFieldValidity();
   lastPlan = null;
   lastRoleAssignments = null;
+  lastCapacities = null;
   lastAudit = [];
   activeSavedSettingId = null;
   lockedAssignments = new Map();
