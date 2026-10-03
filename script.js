@@ -32,6 +32,7 @@ const updateSettingsButton = document.querySelector("#updateSettingsButton");
 const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput");
 
 let lastPlan = null;
+let lastRoleAssignments = null;
 let lastAudit = [];
 let savedSettings = [];
 let activeSavedSettingId = null;
@@ -1140,6 +1141,14 @@ function getValidLockedRules(participants, groupCount) {
   return { lockedRules, nextLocks };
 }
 
+function assignRolesToPlan(plan, roles) {
+  return plan.map((group) => shuffle(group).map((member, index) => ({ member, role: roles[index] || "" })));
+}
+
+function cloneRoleAssignments(assignments) {
+  return assignments ? assignments.map((group) => group.map((entry) => ({ ...entry }))) : null;
+}
+
 function clonePlan(plan) {
   return plan ? plan.map((group) => [...group]) : null;
 }
@@ -1151,6 +1160,7 @@ function createResultSnapshot() {
 
   return {
     plan: clonePlan(lastPlan),
+    roleAssignments: cloneRoleAssignments(lastRoleAssignments),
     locks: [...lockedAssignments.entries()],
   };
 }
@@ -1190,6 +1200,7 @@ function undoLastEdit() {
   }
 
   lastPlan = clonePlan(snapshot.plan);
+  lastRoleAssignments = cloneRoleAssignments(snapshot.roleAssignments);
   lockedAssignments = new Map(snapshot.locks);
   renderGroups(lastPlan);
   refreshAuditForCurrentPlan([
@@ -1304,7 +1315,7 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
   setStatus(`${member}를 ${groupNames[toGroupIndex]}으로 옮겼습니다.`, "success");
 }
 
-function renderGroups(plan) {
+function renderGroups(plan, roleAssignments = lastRoleAssignments) {
   groupsGrid.innerHTML = "";
   emptyState.classList.toggle("is-hidden", Boolean(plan));
   updateUndoButtonState();
@@ -1330,7 +1341,11 @@ function renderGroups(plan) {
     list.className = "member-list";
     list.setAttribute("role", "list");
 
-    members.forEach((member) => {
+    const groupRoles = roleAssignments?.[index] || [];
+    const memberRoles = new Map(groupRoles.map((entry) => [entry.member, entry.role]));
+    const orderedMembers = groupRoles.length === members.length && groupRoles.every((entry) => members.includes(entry.member))
+      ? groupRoles.map((entry) => entry.member) : members;
+    orderedMembers.forEach((member) => {
       const item = document.createElement("li");
       const name = document.createElement("span");
       const actions = document.createElement("div");
@@ -1338,7 +1353,8 @@ function renderGroups(plan) {
       const lockButton = document.createElement("button");
       const locked = lockedAssignments.get(member) === index;
 
-      name.textContent = member;
+      const role = memberRoles.get(member);
+      name.textContent = role ? `${role} — ${member}` : member;
       actions.className = "member-actions";
       moveSelect.className = "member-move-select";
       moveSelect.setAttribute("aria-label", `${member} 이동할 그룹`);
@@ -1676,6 +1692,7 @@ async function generate() {
 
     if (input.errors.length) {
       lastPlan = null;
+      lastRoleAssignments = null;
       lastAudit = [];
       markInvalidFields(input.errors);
       clearEditHistory();
@@ -1705,7 +1722,7 @@ async function generate() {
       }
 
       if (currentResult?.plan) {
-        renderGroups(currentResult.plan);
+        renderGroups(currentResult.plan, null);
       }
 
       setResultState(`${current}/${total}`);
@@ -1717,6 +1734,7 @@ async function generate() {
 
     if (result.error) {
       lastPlan = null;
+      lastRoleAssignments = null;
       lastAudit = result.audit;
       markInvalidFields([result.error]);
       clearEditHistory();
@@ -1728,6 +1746,7 @@ async function generate() {
     }
 
     lastPlan = result.plan;
+    lastRoleAssignments = input.twoStage ? assignRolesToPlan(result.plan, input.roles) : null;
     lastAudit = result.audit;
     clearFieldValidity();
     clearEditHistory();
@@ -1749,14 +1768,19 @@ async function generate() {
   }
 }
 
-function formatCopyResult(plan, groupNames, auditItems, mode) {
-  const groupedText = plan
+function formatCopyResult(plan, groupNames, auditItems, mode, roleAssignments = null) {
+  const displayedPlan = roleAssignments ? plan.map((group, index) => {
+    const roles = new Map((roleAssignments[index] || []).map((entry) => [entry.member, entry.role]));
+    const ordered = (roleAssignments[index] || []).map((entry) => entry.member);
+    return (ordered.length === group.length ? ordered : group).map((member) => roles.get(member) ? `${roles.get(member)} — ${member}` : member);
+  }) : plan;
+  const groupedText = displayedPlan
     .map((group, index) => `${groupNames[index]}\n${group.map((member) => `- ${member}`).join("\n")}`)
     .join("\n\n");
   const namesOnlyText = plan.map((group) => group.join("\n")).join("\n\n");
-  const numberedText = plan.map((group, index) => `${index + 1}. ${groupNames[index]}: ${group.join(", ")}`).join("\n");
-  const chatText = plan.map((group, index) => `[${groupNames[index]}] ${group.join(", ")}`).join("\n");
-  const compactText = plan.map((group, index) => `${groupNames[index]}: ${group.join(", ")}`).join(" / ");
+  const numberedText = displayedPlan.map((group, index) => `${index + 1}. ${groupNames[index]}: ${group.join(", ")}`).join("\n");
+  const chatText = displayedPlan.map((group, index) => `[${groupNames[index]}] ${group.join(", ")}`).join("\n");
+  const compactText = displayedPlan.map((group, index) => `${groupNames[index]}: ${group.join(", ")}`).join(" / ");
   const auditText = getPublicAudit(auditItems, true).map((item) => `- ${item.title}: ${item.detail}`).join("\n");
 
   if (mode === "names") {
@@ -1789,7 +1813,7 @@ async function copyResult() {
   }
 
   const groupNames = getGroupNames(lastPlan.length);
-  const text = formatCopyResult(lastPlan, groupNames, lastAudit, copyModeSelect.value);
+  const text = formatCopyResult(lastPlan, groupNames, lastAudit, copyModeSelect.value, lastRoleAssignments);
 
   try {
     await navigator.clipboard.writeText(text);
@@ -1802,6 +1826,7 @@ async function copyResult() {
 function reset() {
   applyDraftSettings(null);
   lastPlan = null;
+  lastRoleAssignments = null;
   lastAudit = [];
   activeSavedSettingId = null;
   lockedAssignments = new Map();
