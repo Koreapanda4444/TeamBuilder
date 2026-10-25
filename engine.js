@@ -674,21 +674,28 @@ function getAttributeDistributions(plan, profiles) {
   });
 }
 
-function getAttributeBalanceScore(plan, attributeRules = [], profiles = null) {
+function normalizeBalanceWeights(value = {}) {
+  if (!value || typeof value !== "object" || Array.isArray(value) || Object.entries(value).some(([key, weight]) => !key || ["__proto__", "constructor", "prototype"].includes(key) || typeof weight !== "number" || !Number.isFinite(weight) || weight < 0 || weight > 100)) throw new Error("속성 가중치는 0부터 100 사이의 숫자여야 합니다.");
+  return { ...value };
+}
+
+function getAttributeBalanceScore(plan, attributeRules = [], profiles = null, weights = {}) {
   const data = profiles || createParticipantProfiles(plan.flat(), [], attributeRules);
   let score = 0;
   for (const distribution of getAttributeDistributions(plan, data)) {
+    let penalty = 0;
     if (distribution.type === "numeric") {
       const means = distribution.groups.map((group) => group.mean).filter((mean) => mean !== null);
       const range = distribution.max - distribution.min;
-      if (means.length && range > 0) score += (Math.max(...means) - Math.min(...means)) / range;
+      if (means.length && range > 0) penalty += (Math.max(...means) - Math.min(...means)) / range;
     } else {
       const values = new Set(distribution.groups.flatMap((group) => Object.keys(group.values)));
       values.forEach((value) => {
         const counts = distribution.groups.map((group) => distribution.dimension === "attribute" ? (group.values[value] || 0) : (group.values[value] || 0) / Math.max(1, group.size));
-        score += Math.max(...counts) - Math.min(...counts);
+        penalty += Math.max(...counts) - Math.min(...counts);
       });
     }
+    score += penalty * (weights[distribution.dimension] ?? 1);
   }
   return score;
 }
@@ -854,7 +861,7 @@ function searchPlan(input, search) {
     if (!plan) rejectedCapacities.add(capacityKey);
 
     if (plan) {
-      const score = getAttributeBalanceScore(plan, input.attributeRules, input.profiles);
+      const score = getAttributeBalanceScore(plan, input.attributeRules, input.profiles, input.balanceWeights);
 
       if (score < bestScore) {
         bestPlan = plan;

@@ -45,6 +45,7 @@ const updateSettingsButton = document.querySelector("#updateSettingsButton");
 const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput");
 
 let participantRecords = null;
+let balanceWeights = {};
 let lastPlan = null;
 let lastRoleAssignments = null;
 let lastCapacities = null;
@@ -244,6 +245,7 @@ function getDraftSettings() {
   return {
     maxMs: searchTimeInput.value,
     maxOperations: searchOperationsInput.value,
+    balanceWeights: { ...balanceWeights },
     seed: seedInput.value,
     participants: participantsInput.value,
     participantRecords: participantRecords ? participantRecords.map(normalizeParticipantProfile) : null,
@@ -261,6 +263,7 @@ function getDraftSettings() {
 }
 
 function applyDraftSettings(settings) {
+  balanceWeights = normalizeBalanceWeights(settings?.balanceWeights || {});
   seedInput.value = settings?.seed || "";
   searchTimeInput.value = settings?.maxMs || "3000";
   searchOperationsInput.value = settings?.maxOperations || "1000000";
@@ -406,6 +409,7 @@ function getInputs() {
     separateRules: separate.rules,
     fixedRules: fixed.rules,
     attributeRules: attributes.rules,
+    balanceWeights: { ...balanceWeights },
     profiles: createParticipantProfiles(participants, participantRecords, attributes.rules),
     duplicateCount,
     errors,
@@ -495,7 +499,7 @@ async function buildRolledPlan(input, onProgress = null) {
     }
 
     successCount += 1;
-    const score = Number.isFinite(result.score) ? result.score : getAttributeBalanceScore(result.plan, input.attributeRules, input.profiles);
+    const score = Number.isFinite(result.score) ? result.score : getAttributeBalanceScore(result.plan, input.attributeRules, input.profiles, input.balanceWeights);
     const currentResult = {
       ...result,
       score,
@@ -1356,6 +1360,7 @@ function parseSettingsJSON(text) {
   if (!/^\d+$/u.test(settings.groupCount) || Number(settings.groupCount) < 2 || Number(settings.groupCount) > 24 || !/^\d+$/u.test(settings.rollCount) || Number(settings.rollCount) < 1 || Number(settings.rollCount) > MAX_ROLL_COUNT) throw new Error("JSON 그룹 수 또는 돌리기 범위를 확인하세요.");
   if (source.twoStage !== undefined && typeof source.twoStage !== "boolean") throw new Error("JSON 2단계 배정 설정의 형식을 확인하세요.");
   settings.twoStage = source.twoStage === true;
+  settings.balanceWeights = normalizeBalanceWeights(source.balanceWeights ?? {});
   settings.participantRecords = null;
   if (source.participantRecords != null) {
     if (!Array.isArray(source.participantRecords) || source.participantRecords.some((record) => !record || typeof record.name !== "string" || !record.name.trim() || (record.role !== undefined && typeof record.role !== "string"))) {
