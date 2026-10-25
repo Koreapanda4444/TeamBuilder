@@ -3,6 +3,7 @@ const importCSVButton = document.querySelector("#importCSVButton");
 const participantCSVFile = document.querySelector("#participantCSVFile");
 const groupCountInput = document.querySelector("#groupCountInput");
 const rollCountInput = document.querySelector("#rollCountInput");
+const seedInput = document.querySelector("#seedInput");
 const groupNamesInput = document.querySelector("#groupNamesInput");
 const groupCapacitiesInput = document.querySelector("#groupCapacitiesInput");
 const togetherInput = document.querySelector("#togetherInput");
@@ -159,7 +160,7 @@ function syncTwoStageControls() {
 }
 
 function getInputFields() {
-  return [participantsInput, groupCountInput, rollCountInput, groupNamesInput, groupCapacitiesInput, togetherInput, separateInput, fixedInput, attributesInput, twoStageInput, rolesInput];
+  return [seedInput, participantsInput, groupCountInput, rollCountInput, groupNamesInput, groupCapacitiesInput, togetherInput, separateInput, fixedInput, attributesInput, twoStageInput, rolesInput];
 }
 
 function clearFieldValidity() {
@@ -230,6 +231,7 @@ function getStorage() {
 
 function getDraftSettings() {
   return {
+    seed: seedInput.value,
     participants: participantsInput.value,
     participantRecords: participantRecords ? participantRecords.map((record) => ({ ...record })) : null,
     groupCount: groupCountInput.value,
@@ -246,6 +248,7 @@ function getDraftSettings() {
 }
 
 function applyDraftSettings(settings) {
+  seedInput.value = settings?.seed || "";
   participantsInput.value = settings?.participants || "";
   participantRecords = Array.isArray(settings?.participantRecords) ? settings.participantRecords : null;
   groupCountInput.value = settings?.groupCount || "3";
@@ -371,6 +374,7 @@ function getInputs() {
 
   return {
     participants,
+    seed: seedInput.value,
     groupCount,
     capacities: capacityInput.capacities,
     twoStage: twoStageInput.checked,
@@ -419,7 +423,7 @@ async function buildRolledPlan(input, onProgress = null) {
   }
 
   for (let rollIndex = 1; rollIndex <= rollCount; rollIndex += 1) {
-    const result = buildPlan(rollInput);
+    const result = buildPlan({ ...rollInput, seed: `${input.seed}:${rollIndex}` });
 
     if (result.error) {
       lastError = result;
@@ -438,7 +442,7 @@ async function buildRolledPlan(input, onProgress = null) {
       selectedRoll: rollIndex,
     };
     const shouldReplace =
-      !bestResult || score < bestResult.score || (score === bestResult.score && Math.random() < 0.5);
+      !bestResult || score < bestResult.score || (score === bestResult.score && rollIndex < bestResult.selectedRoll);
 
     if (shouldReplace) {
       bestResult = currentResult;
@@ -1042,6 +1046,7 @@ async function generate() {
   setGenerateBusy(true);
 
   try {
+    if (!seedInput.value) seedInput.value = Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
     const input = getInputs();
     applyLockedRules(input);
     renderDraftStats();
@@ -1252,7 +1257,7 @@ function parseSettingsJSON(text) {
   const source = data.settings;
   if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("JSON 설정 형식을 확인하세요.");
   const settings = {};
-  const textFields = ["participants", "groupNames", "groupCapacities", "together", "separate", "fixed", "attributes", "roles"];
+  const textFields = ["seed", "participants", "groupNames", "groupCapacities", "together", "separate", "fixed", "attributes", "roles"];
   for (const key of textFields) {
     if (source[key] !== undefined && typeof source[key] !== "string") throw new Error("JSON 설정 입력값의 형식을 확인하세요.");
     settings[key] = source[key] || "";

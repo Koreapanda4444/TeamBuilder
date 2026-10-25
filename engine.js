@@ -1,3 +1,17 @@
+let engineRandom = Math.random;
+
+function createSeededRandom(seed) {
+  let state = 2166136261;
+  for (const char of String(seed)) state = Math.imul(state ^ char.charCodeAt(0), 16777619) >>> 0;
+  return () => {
+    state = (state + 0x6D2B79F5) >>> 0;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const LIST_DELIMITER_PATTERN = /[\t,;，、|]+/u;
 const WIDE_SPACE_PATTERN = /\s{2,}/u;
 const RULE_DELIMITER_PATTERN = /\s*(?:<->|↔|->|=>|→|-|,|，|、|;|\/|>|와|과)\s*|\t+|\s{2,}/u;
@@ -127,7 +141,7 @@ function shuffle(items) {
   const copy = [...items];
 
   for (let index = copy.length - 1; index > 0; index -= 1) {
-    const next = Math.floor(Math.random() * (index + 1));
+    const next = Math.floor(engineRandom() * (index + 1));
     [copy[index], copy[next]] = [copy[next], copy[index]];
   }
 
@@ -700,6 +714,7 @@ function validatePlan(plan, togetherRules, separateRules, fixedRules = [], attri
 }
 
 function buildPlan(input) {
+  engineRandom = createSeededRandom(input.seed ?? "TeamBuilder");
   const components = createComponents(input.participants, input.togetherRules);
   const maxTargetSize = input.capacities ? Math.max(...input.capacities) : Math.ceil(input.participants.length / input.groupCount);
   const componentTooLarge = components.find((component) => component.size > maxTargetSize);
