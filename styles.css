@@ -1062,3 +1062,5 @@ textarea { resize: vertical; max-height: 320px; }
 
 summary:focus-visible, .candidate-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
+
+.member-list li > .secondary-button { width: 100%; }

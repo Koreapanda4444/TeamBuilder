@@ -67,11 +67,15 @@ let lastQuality = null;
 let resultCandidates = [];
 let selectedMembers = new Set();
 let activeDrag = null;
+const visibleMemberLimits = new Map();
 let selectedCandidateId = null;
 let resultHistory = [];
 const RESULT_HISTORY_KEY = "teambuilder.resultHistory.v2";
 const DRAFT_STORAGE_KEY = "teambuilder.draft.v2";
 let draftSaveTimer = null;
+let draftRenderTimer = null;
+let draftInputPending = false;
+let participantInputPending = false;
 let savedSettings = [];
 let activeSavedSettingId = null;
 let lockedAssignments = new Map();
@@ -90,21 +94,19 @@ const MAX_EDIT_HISTORY = 20;
 const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v2";
 const LEGACY_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
 
-
-
-
-
-
 function getParticipantNames(value = participantsInput.value, records = participantRecords) {
-  if (records && value === records.map((record) => record.name).join("\n")) return records.map((record) => record.name);
-  return splitParticipants(value);
+  if (!records) return splitParticipants(value);
+  const known = new Set(records.map((record) => record.name));
+  return String(value).replace(/\r/g, "").split("\n").flatMap((line) => known.has(line.trim()) ? [line.trim()] : splitParticipants(line));
 }
 
 function applyParticipantRecords(records) {
+  if (isGenerating) return;
+  clearTimeout(draftRenderTimer); draftInputPending = false; participantInputPending = false;
   participantRecords = records.map(normalizeParticipantProfile);
   participantsInput.value = records.map((record) => record.name).join("\n");
   renderDraftStats();
-  refreshResultConsistency();
+  refreshResultConsistency(); saveDraft();
 }
 
 async function importParticipantCSV(event) {
@@ -122,9 +124,6 @@ async function importParticipantCSV(event) {
     event.target.value = "";
   }
 }
-
-
-
 
 function setStatus(text, type = "default") {
   statusMessage.setAttribute("role", type === "error" ? "alert" : "status");
@@ -154,6 +153,8 @@ function refreshResultConsistency() {
   copyButton.disabled = isGenerating || !current;
   exportCSVButton.disabled = isGenerating || !current;
   exportResultJSONButton.disabled = isGenerating || !current;
+  renderGroups(lastPlan);
+  if (current) refreshAuditForCurrentPlan(); else renderAudit([]);
   setResultState(current ? "완료" : "재생성 필요", current ? "ready" : "error");
 }
 
@@ -357,13 +358,6 @@ function loadSavedSettings() {
   }
 }
 
-
-
-
-
-
-
-
 function getGroupNames(groupCount) {
   const names = splitLines(groupNamesInput.value);
   const count = Number.isInteger(groupCount) && groupCount > 0 && groupCount <= 24 ? groupCount : 0;
@@ -381,9 +375,6 @@ function validateGroupNames(groupCount) {
 
   return duplicates.length ? [`그룹 이름이 중복되어 있습니다: ${duplicates.join(", ")}`] : [];
 }
-
-
-
 
 function getInputs() {
   const parsedParticipants = getParticipantNames();
@@ -412,6 +403,7 @@ function getInputs() {
     errors.push(`돌리기는 1부터 ${MAX_ROLL_COUNT} 사이로 입력해야 합니다.`);
   }
 
+  if (seedInput.value.length > 256) errors.push("시드는 256자 이하여야 합니다.");
   if (!Number.isInteger(attempts) || attempts < 100) {
     errors.push("시도 횟수는 100 이상이어야 합니다.");
   }
@@ -455,18 +447,6 @@ function getInputs() {
   };
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 function cancelledResult() { return { status: "cancelled", error: "배정을 취소했습니다.", audit: [] }; }
 
 function reportSearchProgress(progress) {
@@ -489,7 +469,7 @@ async function computePlan(input, onProgress = reportSearchProgress) {
   const fallback = async () => {
     await waitForResultPaint();
     if (generationCancelled) return cancelledResult();
-    return buildPlan({ ...input, maxMs: Math.min(input.maxMs || 3000, 150) }, { onProgress });
+    return buildPlan({ ...input, maxMs: Math.min(input.maxMs || 3000, 150), maxOperations: Math.min(input.maxOperations || 1000000, 20000) }, { onProgress });
   };
   if (typeof Worker === "undefined") return fallback();
   try {
@@ -503,7 +483,7 @@ async function computePlan(input, onProgress = reportSearchProgress) {
         cleanup(); resolve(data.result);
       };
       worker.onerror = () => { cleanup(); reject(new Error("Worker unavailable")); };
-      worker.postMessage(input);
+      try { worker.postMessage(input); } catch (error) { cleanup(); reject(error); }
     });
   } catch { return fallback(); }
 }
@@ -636,7 +616,6 @@ function getValidLockedRules(participants, groupCount) {
 
   return { lockedRules, nextLocks };
 }
-
 
 function cloneRoleAssignments(assignments) {
   return assignments ? assignments.map((group) => group.map((entry) => ({ ...entry }))) : null;
@@ -790,7 +769,6 @@ function toggleMemberLock(member, groupIndex) {
   setStatus(wasLocked ? `${member}의 고정을 해제했습니다.` : `${member}를 고정했습니다.`, "success");
 }
 
-
 function validateManualPlan(plan, roleAssignments) {
   const input = getInputs();
   input.fixedRules = [...input.fixedRules, ...[...lockedAssignments].map(([member, groupIndex]) => ({ member, groupIndex }))];
@@ -798,6 +776,7 @@ function validateManualPlan(plan, roleAssignments) {
 }
 
 function applyManualPlan(plan, roles = lastRoleAssignments) {
+  if (isGenerating || !isResultCurrent()) return false;
   const input = getInputs();
   if (input.twoStage && validateManualPlan(plan, roles).length) {
     const matched = plan.map((group) => findRoleMatching(group, input));
@@ -817,6 +796,7 @@ function applyManualPlan(plan, roles = lastRoleAssignments) {
   renderGroups(lastPlan);
   refreshAuditForCurrentPlan();
   refreshResultConsistency();
+  saveDraft();
   setStatus("조건을 확인하고 결과를 변경했습니다.", "success");
   return true;
 }
@@ -843,7 +823,7 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
   }
   if (!applyManualPlan(plan, roles)) return false;
   lockedAssignments.set(member, toGroupIndex);
-  renderGroups(lastPlan);
+  saveDraft(); renderGroups(lastPlan);
   return true;
 }
 
@@ -922,6 +902,7 @@ function applyWeightConfiguration() {
 }
 
 function saveDraft() {
+  flushDraftChanges();
   clearTimeout(draftSaveTimer);
   try {
     const storage = getStorage();
@@ -931,9 +912,38 @@ function saveDraft() {
   } catch { document.querySelector("#draftState").textContent = "자동 저장 실패"; return false; }
 }
 
+function flushDraftChanges() {
+  clearTimeout(draftRenderTimer);
+  if (!draftInputPending) return;
+  draftInputPending = false;
+  if (participantInputPending && participantRecords) {
+    const existing = new Map(participantRecords.map((record) => [record.name, record]));
+    participantRecords = uniqueItems(getParticipantNames()).map((name) => existing.get(name) || normalizeParticipantProfile({ name }));
+  }
+  participantInputPending = false;
+  renderDraftStats();
+  refreshResultConsistency();
+}
+
+function handleDraftInput(event) {
+  const input = event.currentTarget;
+  const first = !draftInputPending;
+  draftInputPending = true;
+  participantInputPending ||= input === participantsInput;
+  input.removeAttribute("aria-invalid");
+  if (input === twoStageInput) syncTwoStageControls();
+  if (lastPlan && first) {
+    setResultState("재생성 필요", "error"); qualityStrip.hidden = true;
+    [copyButton, exportCSVButton, exportResultJSONButton, undoEditButton, redoEditButton].forEach((button) => { button.disabled = true; });
+  }
+  clearTimeout(draftRenderTimer); draftRenderTimer = setTimeout(flushDraftChanges, 120);
+  scheduleDraftSave();
+}
+
 function scheduleDraftSave() {
   clearTimeout(draftSaveTimer);
-  document.querySelector("#draftState").textContent = "저장 중";
+  const indicator = document.querySelector("#draftState");
+  if (indicator.textContent !== "저장 중") indicator.textContent = "저장 중";
   draftSaveTimer = setTimeout(saveDraft, 350);
 }
 
@@ -980,12 +990,13 @@ function restoreResultHistory(id) {
     const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: item.settings }));
     applyDraftSettings(settings);
     const input = getInputs(), snapshot = structuredClone(item.snapshot);
+    snapshot.capacities = input.capacities ? [...input.capacities] : null;
     if (!Array.isArray(snapshot.locks) || snapshot.locks.some((entry) => !Array.isArray(entry) || entry.length !== 2 || !input.participants.includes(entry[0]) || !Number.isInteger(entry[1]) || !snapshot.plan?.[entry[1]]?.includes(entry[0]))) throw new Error("기록의 고정 정보를 확인하세요.");
     input.fixedRules.push(...snapshot.locks.map(([member, groupIndex]) => ({ member, groupIndex })));
     const errors = validateAssignmentResult(snapshot.plan, input, snapshot.roleAssignments);
     if (errors.length) throw new Error(errors[0]);
     snapshot.signature = getInputSignature(); snapshot.quality = scoreAssignment(snapshot.plan, input, snapshot.roleAssignments);
-    resultCandidates = (Array.isArray(item.candidates) ? item.candidates : []).filter((candidate) => candidate && !validateAssignmentResult(candidate.plan, input, candidate.roleAssignments).length).slice(0, 5).map((candidate) => ({ ...candidate, quality: scoreAssignment(candidate.plan, input, candidate.roleAssignments) }));
+    resultCandidates = (Array.isArray(item.candidates) ? item.candidates : []).filter((candidate) => candidate && typeof candidate.id === "string" && !validateAssignmentResult(candidate.plan, input, candidate.roleAssignments).length).slice(0, 5).map((candidate) => ({ ...candidate, quality: scoreAssignment(candidate.plan, input, candidate.roleAssignments) }));
     restoreResultSnapshot(snapshot); clearEditHistory(); renderDraftStats(); renderResultHistory();
     setStatus("생성 조건·시드와 결과를 복원했습니다.", "success"); return true;
   } catch (error) { applyDraftSettings(previous); setStatus(error.message || "결과 기록을 복원할 수 없습니다.", "error"); return false; }
@@ -996,7 +1007,7 @@ function renderResultHistory() {
   if (!resultHistory.length) { const empty = document.createElement("p"); empty.className = "saved-empty"; empty.textContent = "생성한 결과가 여기에 기록됩니다."; list.append(empty); }
   resultHistory.forEach((item) => {
     const button = document.createElement("button"); button.type = "button"; button.className = "saved-load";
-    button.textContent = `${new Date(item.createdAt).toLocaleString()} · 시드 ${item.settings.seed || "—"} · ${item.snapshot.quality?.total?.toFixed(1) || "—"}점`;
+    button.textContent = `${new Date(item.createdAt).toLocaleString()} · 시드 ${item.settings.seed || "—"} · ${(Number.isFinite(item.snapshot.quality?.total) ? item.snapshot.quality.total.toFixed(1) : "—")}점`;
     button.disabled = isGenerating; button.addEventListener("click", () => restoreResultHistory(item.id)); list.append(button);
   });
 }
@@ -1027,12 +1038,14 @@ function renderQuality() {
   for (const [key, id] of [["total", "totalQuality"], ["balance", "balanceQuality"], ["role", "roleQuality"]]) document.querySelector(`#${id}`).textContent = lastQuality ? lastQuality[key].toFixed(1) : "—";
 }
 
-function matchesParticipant(member, input = getInputs()) {
+function createParticipantMatcher(input = getInputs()) {
   const query = document.querySelector("#participantSearch").value.trim().toLocaleLowerCase();
-  const profile = input.profiles.find((item) => item.name === member);
-  const role = lastRoleAssignments?.flat().find((entry) => entry.member === member)?.role || "";
-  return !query || `${member} ${role} ${Object.values(profile?.attributes || {}).join(" ")}`.toLocaleLowerCase().includes(query);
+  const profiles = new Map(input.profiles.map((profile) => [profile.name, profile]));
+  const roles = new Map((lastRoleAssignments || []).flat().map((entry) => [entry.member, entry.role]));
+  return (member) => !query || `${member} ${roles.get(member) || ""} ${Object.values(profiles.get(member)?.attributes || {}).join(" ")}`.toLocaleLowerCase().includes(query);
 }
+
+function matchesParticipant(member, input = getInputs()) { return createParticipantMatcher(input)(member); }
 
 function updateBulkControls() {
   document.querySelector("#selectionCount").textContent = `${selectedMembers.size}명 선택`;
@@ -1041,7 +1054,7 @@ function updateBulkControls() {
 
 function selectVisibleMembers() {
   if (!canUseResult()) return;
-  const input = getInputs(), visible = lastPlan.flat().filter((member) => matchesParticipant(member, input));
+  const input = getInputs(), visible = lastPlan.flat().filter(createParticipantMatcher(input));
   const all = visible.every((member) => selectedMembers.has(member));
   visible.forEach((member) => all ? selectedMembers.delete(member) : selectedMembers.add(member));
   renderGroups(lastPlan);
@@ -1152,8 +1165,8 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
   emptyState.classList.toggle("is-hidden", Boolean(plan)); updateUndoButtonState();
   selectedMembers = new Set([...selectedMembers].filter((member) => plan?.some((group) => group.includes(member))));
   updateBulkControls();
-  if (!plan) return;
-  const input = getInputs(), protectedMembers = getProtectedMembers(input), current = isResultCurrent() && plan === lastPlan;
+  if (!plan) { document.querySelector("#searchMatchCount").textContent = "결과 없음"; return; }
+  const input = getInputs(), protectedMembers = getProtectedMembers(input), current = isResultCurrent() && plan === lastPlan, matches = createParticipantMatcher(input);
   const groupNames = getGroupNames(plan.length), target = document.querySelector("#bulkTargetSelect"), chosenTarget = target.value;
   target.replaceChildren(); groupNames.forEach((name, index) => { const option = document.createElement("option"); option.value = String(index); option.textContent = name; target.append(option); }); target.value = chosenTarget || "0";
   const distributions = getAttributeDistributions(plan, input.profiles);
@@ -1163,7 +1176,14 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
     title.textContent = groupNames[index]; count.textContent = `${members.length}명`; card.setAttribute("aria-label", `${groupNames[index]}, ${members.length}명`); list.className = "member-list";
     const groupRoles = roleAssignments?.[index] || [], roles = new Map(groupRoles.map((entry) => [entry.member, entry.role]));
     const ordered = groupRoles.length === members.length && groupRoles.every((entry) => members.includes(entry.member)) ? groupRoles.map((entry) => entry.member) : members;
-    ordered.filter((member) => matchesParticipant(member, input)).forEach((member) => list.append(renderMember(member, index, plan, roles, groupNames, protectedMembers, current)));
+    const filtered = ordered.filter(matches), limit = visibleMemberLimits.get(index) || 100;
+    filtered.slice(0, limit).forEach((member) => list.append(renderMember(member, index, plan, roles, groupNames, protectedMembers, current)));
+    count.textContent = `${members.length}명${filtered.length !== members.length ? ` · 검색 ${filtered.length}명` : ""}`;
+    if (filtered.length > limit) {
+      const more = document.createElement("li"), button = document.createElement("button"); button.type = "button"; button.className = "secondary-button compact";
+      button.textContent = `${groupNames[index]} 다음 ${Math.min(100, filtered.length - limit)}명 보기 (${limit}/${filtered.length})`;
+      button.addEventListener("click", () => { visibleMemberLimits.set(index, limit + 100); renderGroups(lastPlan); }); more.append(button); list.append(more);
+    }
     card.addEventListener("dragover", (event) => {
       if (activeDrag && activeDrag.from !== index && current && !isGenerating) { event.preventDefault(); card.classList.add("is-drop-target"); }
     });
@@ -1173,7 +1193,7 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
     if (distributions.length) { const summary = document.createElement("p"); summary.className = "attribute-summary"; summary.textContent = distributions.map((entry) => `${entry.dimension}: ${entry.type === "numeric" ? (entry.groups[index].mean?.toFixed(1) ?? "—") : Object.entries(entry.groups[index].values).map(([value, amount]) => `${value} ${amount}`).join(", ")}`).join(" · "); card.append(summary); }
     card.append(list); groupsGrid.append(card);
   });
-  document.querySelector("#searchMatchCount").textContent = `${plan.flat().filter((member) => matchesParticipant(member, input)).length}명 표시`;
+  document.querySelector("#searchMatchCount").textContent = `${plan.flat().filter(matches).length}명 검색됨`;
   restoreWorkspaceFocus(focusKey);
 }
 
@@ -1242,6 +1262,7 @@ function renderSavedSettings() {
 }
 
 function saveCurrentSettings() {
+  flushDraftChanges();
   const settings = getDraftSettings();
   const meta = getSettingsMeta(settings);
   const name = savedSettingsNameInput.value.trim() || `저장값 ${savedSettings.length + 1}`;
@@ -1268,6 +1289,7 @@ function saveCurrentSettings() {
 }
 
 function updateCurrentSavedSetting() {
+  flushDraftChanges();
   const item = savedSettings.find((savedItem) => savedItem.id === activeSavedSettingId);
 
   if (!item) {
@@ -1297,6 +1319,9 @@ function updateCurrentSavedSetting() {
 }
 
 function loadSavedSetting(item) {
+  clearTimeout(draftRenderTimer); draftInputPending = false; participantInputPending = false;
+  selectedMembers.clear(); visibleMemberLimits.clear();
+  document.querySelector("#participantSearch").value = "";
   resultCandidates = []; selectedCandidateId = null;
   applyDraftSettings(item.settings);
   activeSavedSettingId = item.id;
@@ -1412,7 +1437,9 @@ async function generate() {
     return;
   }
 
+  flushDraftChanges();
   generationCancelled = false;
+  visibleMemberLimits.clear();
   const previousResult = createResultSnapshot();
   generationProgress.value = 0;
   isGenerating = true;
@@ -1491,7 +1518,6 @@ async function generate() {
       return;
     }
 
-    engineRandom = createSeededRandom(`${input.seed}:roles`);
     const assignedRoles = input.twoStage ? result.roleAssignments : null;
     const validationErrors = validateAssignmentResult(result.plan, input, assignedRoles);
     if (validationErrors.length) {
@@ -1520,6 +1546,7 @@ async function generate() {
         : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
       "success",
     );
+    if (result.searchLimited) setStatus("탐색 연산 한계 안에서 찾은 유효한 결과입니다. 가중치 최적화는 더 진행할 수 있습니다.", "success");
     recordResultHistory(); saveDraft();
   } catch (error) {
     if (previousResult) restoreResultSnapshot(previousResult);
@@ -1621,6 +1648,8 @@ function canUseResult() {
     refreshResultConsistency();
     return false;
   }
+  const errors = validateManualPlan(lastPlan, lastRoleAssignments);
+  if (errors.length) { setStatus(errors[0], "error"); return false; }
   return true;
 }
 
@@ -1716,6 +1745,9 @@ function parseSettingsJSON(text) {
 }
 
 function restoreSettings(settings) {
+  clearTimeout(draftRenderTimer); draftInputPending = false; participantInputPending = false;
+  selectedMembers.clear(); visibleMemberLimits.clear();
+  document.querySelector("#participantSearch").value = "";
   resultCandidates = []; selectedCandidateId = null;
   applyDraftSettings(settings);
   activeSavedSettingId = null;
@@ -1737,6 +1769,7 @@ function restoreSettings(settings) {
 }
 
 function exportSettingsJSON() {
+  flushDraftChanges();
   if (isGenerating) return;
   downloadText("TeamBuilder-settings.json", buildSettingsJSON(), "application/json;charset=utf-8");
   setStatus("설정을 내보냈습니다.", "success");
@@ -1759,6 +1792,9 @@ async function importSettingsJSON(event) {
 }
 
 function reset() {
+  clearTimeout(draftRenderTimer); draftInputPending = false; participantInputPending = false;
+  selectedMembers.clear(); visibleMemberLimits.clear();
+  document.querySelector("#participantSearch").value = "";
   clearTimeout(draftSaveTimer);
   try { getStorage()?.removeItem(DRAFT_STORAGE_KEY); } catch {}
   document.querySelector("#draftState").textContent = "";
@@ -1784,6 +1820,7 @@ function reset() {
 }
 
 function clearLockedAssignments() {
+  if (isGenerating) return;
   if (!lockedAssignments.size) {
     setStatus("고정된 멤버가 없습니다.", "error");
     return;
@@ -1800,6 +1837,7 @@ function clearLockedAssignments() {
     },
   ]);
   setResultState("수정됨");
+  refreshResultConsistency(); saveDraft();
   setStatus("고정된 멤버를 모두 해제했습니다.", "success");
 }
 
@@ -1875,24 +1913,7 @@ groupCountInput.addEventListener("keydown", handleSingleLineKeydown);
 groupCapacitiesInput.addEventListener("keydown", handleSingleLineKeydown);
 rollCountInput.addEventListener("keydown", handleSingleLineKeydown);
 savedSettingsNameInput.addEventListener("keydown", handleSavedNameKeydown);
-getInputFields().forEach((input) => {
-  input.addEventListener("input", () => {
-    if (input === participantsInput && participantRecords) {
-      const existing = new Map(participantRecords.map((record) => [record.name, record]));
-      participantRecords = uniqueItems(splitParticipants(participantsInput.value)).map((name) => existing.get(name) || normalizeParticipantProfile({ name }));
-    }
-    scheduleDraftSave();
-    syncTwoStageControls();
-    input.removeAttribute("aria-invalid");
-    renderDraftStats();
-    if (lastPlan) {
-      if (input === groupNamesInput) {
-        renderGroups(lastPlan);
-      }
-      refreshResultConsistency();
-    }
-  });
-});
+getInputFields().forEach((input) => input.addEventListener("input", handleDraftInput));
 
 document.addEventListener("keydown", (event) => {
   if (event.isComposing) return;

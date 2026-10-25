@@ -65,7 +65,7 @@
                 <span class="sr-only" id="groupNamesHelp">그룹 이름을 줄마다 하나씩 입력합니다.</span>
               </label>
             </div>
-            <label class="field"><span>랜덤 시드 (같은 시드로 재현)</span><input id="seedInput" type="text" placeholder="자동 생성" /></label>
+            <label class="field"><span>랜덤 시드 (같은 시드로 재현)</span><input id="seedInput" type="text" maxlength="256" placeholder="자동 생성" /></label>
             <label class="field">
               <span>그룹별 인원</span>
               <input id="groupCapacitiesInput" type="text" placeholder="5,5" aria-describedby="groupCapacitiesHelp" />
@@ -105,7 +105,7 @@
               <label class="field">
                 <span>역할</span>
                 <input id="rolesInput" type="text" placeholder="TOP, JG, MID, ADC, SUP" disabled aria-describedby="rolesHelp" />
-                <span class="sr-only" id="rolesHelp">필수 역할은 이름을, 선택 역할은 ?이름을 쉼표로 구분합니다.</span>
+                <span class="sr-only" id="rolesHelp">역할은 최대 256개입니다. 필수 역할은 이름을, 선택 역할은 ?이름을 쉼표로 구분합니다.</span>
               </label>
             </div>
             <div class="control-grid"><label class="field"><span>탐색 시간 (ms)</span><input id="searchTimeInput" type="number" min="50" max="30000" value="3000" /></label><label class="field"><span>최대 연산량</span><input id="searchOperationsInput" type="number" min="100" max="10000000" value="1000000" /></label></div>
