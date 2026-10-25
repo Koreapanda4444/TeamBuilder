@@ -110,19 +110,22 @@ function parseParticipantCSV(text) {
   const rows = parseCSV(text);
   if (!rows.length) throw new Error("CSV에 name 헤더와 참가자를 입력하세요.");
   const headers = rows[0].map((header) => header.trim().toLowerCase());
-  if (new Set(headers).size !== headers.length || !headers.includes("name")) {
-    throw new Error("CSV에는 중복되지 않는 name 헤더가 필요합니다.");
-  }
-  const nameIndex = headers.indexOf("name");
-  const roleIndex = headers.indexOf("role");
+  if (headers.some((header) => !header) || new Set(headers).size !== headers.length || !headers.includes("name")) throw new Error("CSV에는 중복되지 않는 name 헤더가 필요합니다.");
+  const reserved = new Set(["name", "role", "preferences", "restrictions", "requiredrole"]);
+  const dimensions = headers.filter((header) => !reserved.has(header)).map((header) => header.replace(/^(?:attr|attribute):/u, ""));
+  if (new Set(dimensions).size !== dimensions.length) throw new Error("CSV 속성 이름이 중복됩니다.");
   const records = rows.slice(1).map((cells, index) => {
     if (cells.length !== headers.length) throw new Error(`CSV ${index + 2}번째 줄의 열 수를 확인하세요.`);
-    const name = cells[nameIndex].trim();
-    if (!name) throw new Error(`CSV ${index + 2}번째 줄의 이름이 비어 있습니다.`);
-    return { name, role: roleIndex === -1 ? "" : cells[roleIndex].trim() };
+    const values = Object.fromEntries(headers.map((header, column) => [header, cells[column].trim()]));
+    const attributes = Object.fromEntries(headers.filter((header) => !reserved.has(header) && values[header] !== "").map((header) => {
+      const text = values[header];
+      const value = /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/iu.test(text) && Number.isFinite(Number(text)) ? Number(text) : text;
+      return [header.replace(/^(?:attr|attribute):/u, ""), value];
+    }));
+    const list = (value) => value ? value.split(/[|;,]/u).map((role) => role.trim()).filter(Boolean) : undefined;
+    return normalizeParticipantProfile({ name: values.name, role: values.role || "", attributes, preferences: list(values.preferences), restrictions: list(values.restrictions), requiredRole: values.requiredrole || "" });
   });
-  if (!records.length) throw new Error("CSV에 참가자가 없습니다.");
-  if (duplicateItems(records.map((record) => record.name)).length || records.some((record) => /[\u0000-\u001f\u007f]/u.test(record.name))) throw new Error("CSV 이름의 중복 또는 제어 문자를 확인하세요.");
+  if (!records.length || duplicateItems(records.map((record) => record.name)).length) throw new Error("CSV 명단의 중복과 빈 명단을 확인하세요.");
   return records;
 }
 
