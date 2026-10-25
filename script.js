@@ -54,6 +54,7 @@ let lockedAssignments = new Map();
 let editHistory = [];
 let redoHistory = [];
 let isGenerating = false;
+let activeWorker = null;
 const DEFAULT_ATTEMPTS = 1800;
 const DEFAULT_ROLL_COUNT = 1;
 const MAX_ROLL_COUNT = 30;
@@ -413,11 +414,32 @@ function getInputs() {
 
 
 
+async function computePlan(input, onProgress = null) {
+  const fallback = async () => {
+    await waitForResultPaint();
+    return buildPlan({ ...input, maxMs: Math.min(input.maxMs || 3000, 150) }, { onProgress });
+  };
+  if (typeof Worker === "undefined") return fallback();
+  try {
+    return await new Promise((resolve, reject) => {
+      const worker = new Worker(new URL("assignment-worker.js", document.baseURI));
+      activeWorker = worker;
+      const cleanup = () => { worker.terminate(); if (activeWorker === worker) activeWorker = null; };
+      worker.onmessage = ({ data }) => {
+        if (data.type === "progress") { onProgress?.(data.progress); return; }
+        cleanup(); resolve(data.result);
+      };
+      worker.onerror = () => { cleanup(); reject(new Error("Worker unavailable")); };
+      worker.postMessage(input);
+    });
+  } catch { return fallback(); }
+}
+
 async function buildRolledPlan(input, onProgress = null) {
   const rollCount = input.rollCount || DEFAULT_ROLL_COUNT;
 
   if (rollCount <= 1) {
-    return buildPlan(input);
+    return computePlan(input);
   }
 
   let bestResult = null;
@@ -432,7 +454,7 @@ async function buildRolledPlan(input, onProgress = null) {
   }
 
   for (let rollIndex = 1; rollIndex <= rollCount; rollIndex += 1) {
-    const result = buildPlan({ ...rollInput, seed: `${input.seed}:${rollIndex}` });
+    const result = await computePlan({ ...rollInput, seed: `${input.seed}:${rollIndex}` });
 
     if (result.error) {
       lastError = result;
@@ -481,7 +503,7 @@ async function buildRolledPlan(input, onProgress = null) {
     };
   }
 
-  return lastError || buildPlan(input);
+  return lastError || computePlan(input);
 }
 
 function renderSummary(participantCount, groupCount) {
@@ -1118,6 +1140,7 @@ async function generate() {
       return;
     }
 
+    engineRandom = createSeededRandom(`${input.seed}:roles`);
     const assignedRoles = input.twoStage ? assignRolesToPlan(result.plan, input.roles) : null;
     const validationErrors = validateAssignmentResult(result.plan, input, assignedRoles);
     if (validationErrors.length) {
