@@ -384,7 +384,7 @@ function getInputs() {
   const roleInput = parseRoleList(rolesInput.value, twoStageInput.checked);
 
   if (twoStageInput.checked && !capacityInput.errors.length && !roleInput.errors.length) {
-    errors.push(...validateNestedCapacities(participants.length, groupCount, capacityInput.capacities, roleInput.roleCount));
+    errors.push(...validateNestedCapacities(participants.length, groupCount, capacityInput.capacities, roleInput.roleCount, roleInput.requiredRoles.length));
   }
 
   errors.push(...roleInput.errors, ...capacityInput.errors, ...groupNameErrors, ...together.errors, ...separate.errors, ...fixed.errors, ...attributes.errors);
@@ -397,6 +397,7 @@ function getInputs() {
     capacities: capacityInput.capacities,
     twoStage: twoStageInput.checked,
     roles: roleInput.roles,
+    requiredRoles: roleInput.requiredRoles, optionalRoles: roleInput.optionalRoles,
     roleCount: roleInput.roleCount,
     rollCount,
     groupNames: getGroupNames(groupCount),

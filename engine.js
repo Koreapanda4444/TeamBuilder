@@ -3,7 +3,13 @@ function normalizeParticipantProfile(record) {
   if (record.role !== undefined && typeof record.role !== "string") throw new Error("참가자 역할 형식을 확인하세요.");
   const attributes = record.attributes ?? {};
   if (!attributes || typeof attributes !== "object" || Array.isArray(attributes) || Object.entries(attributes).some(([key, value]) => !key.trim() || ["__proto__", "constructor", "prototype"].includes(key) || (typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value))))) throw new Error("참가자 속성 형식을 확인하세요.");
-  return { name: record.name.trim(), role: record.role || "", attributes: { ...attributes } };
+  const roleList = (value, fallback = []) => {
+    if (value === undefined) return fallback;
+    if (!Array.isArray(value) || value.some((role) => typeof role !== "string" || !role.trim())) throw new Error("역할 선호·제한 형식을 확인하세요.");
+    return uniqueItems(value.map((role) => role.trim()));
+  };
+  if (record.requiredRole !== undefined && typeof record.requiredRole !== "string") throw new Error("필수 역할 형식을 확인하세요.");
+  return { name: record.name.trim(), role: record.role || "", attributes: { ...attributes }, preferences: roleList(record.preferences, record.role ? [record.role] : []), restrictions: roleList(record.restrictions), requiredRole: record.requiredRole?.trim() || "" };
 }
 
 function createParticipantProfiles(names, records = [], attributeRules = []) {
@@ -347,26 +353,21 @@ function parseAttributeRules(value, names) {
 }
 
 function parseRoleList(value, enabled = true) {
-  if (!enabled) return { roles: [], roleCount: 0, errors: [] };
-  const roles = value.split(",").map((role) => role.trim()).filter(Boolean);
+  if (!enabled) return { roles: [], requiredRoles: [], optionalRoles: [], roleCount: 0, errors: [] };
+  const tokens = value.split(",").map((role) => role.trim()).filter(Boolean);
+  const requiredRoles = tokens.filter((role) => !role.startsWith("?")).map((role) => role.trim());
+  const optionalRoles = tokens.filter((role) => role.startsWith("?")).map((role) => role.slice(1).trim());
+  const roles = [...requiredRoles, ...optionalRoles];
   const errors = [];
-  if (!roles.length) errors.push("2단계 배정에 사용할 역할을 입력하세요.");
-  const duplicates = duplicateItems(roles);
-  if (duplicates.length) errors.push(`역할이 중복되어 있습니다: ${duplicates.join(", ")}`);
-  if (roles.some((role) => /[\u0000-\u001f\u007f]/u.test(role))) errors.push("역할에는 줄바꿈이나 제어 문자를 사용할 수 없습니다.");
-  return { roles, roleCount: roles.length, errors };
+  if (!roles.length || roles.some((role) => !role || /[\u0000-\u001f\u007f]/u.test(role))) errors.push("2단계 배정의 역할을 확인하세요.");
+  if (duplicateItems(roles).length) errors.push("역할 이름이 중복되어 있습니다.");
+  return { roles, requiredRoles, optionalRoles, roleCount: roles.length, errors };
 }
 
-function validateNestedCapacities(participantCount, groupCount, capacities, roleCount) {
+function validateNestedCapacities(participantCount, groupCount, capacities, roleCount, requiredCount = roleCount) {
   if (!Number.isInteger(groupCount) || groupCount < 2 || !roleCount) return [];
-  if (capacities) {
-    if (capacities.some((size) => size !== roleCount)) {
-      return ["2단계 배정은 모든 그룹의 정원과 역할 수가 같아야 합니다."];
-    }
-  } else if (participantCount !== groupCount * roleCount) {
-    return ["2단계 배정은 각 그룹 인원과 역할 수가 같아야 합니다."];
-  }
-  return [];
+  const sizes = capacities || Array.from({ length: groupCount }, (_, index) => Math.floor(participantCount / groupCount) + (index < participantCount % groupCount ? 1 : 0));
+  return sizes.some((size) => size < requiredCount || size > roleCount) ? ["그룹 인원은 필수 역할 수 이상, 전체 역할 수 이하여야 합니다."] : [];
 }
 
 function parseGroupCapacities(value, groupCount, participantCount) {
@@ -887,8 +888,12 @@ function searchPlan(input, search) {
   };
 }
 
+function canAssignRole(profile, role) {
+  return !profile?.restrictions?.includes(role) && (!profile?.requiredRole || profile.requiredRole === role);
+}
+
 function assignRolesToPlan(plan, roles) {
-  if (plan.some((group) => group.length !== roles.length)) throw new Error("그룹 인원과 역할 수가 같아야 합니다.");
+  if (plan.some((group) => group.length > roles.length)) throw new Error("그룹 인원과 역할 수가 같아야 합니다.");
   return plan.map((group) => shuffle(group).map((member, index) => ({ member, role: roles[index] || "" })));
 }
 
@@ -903,7 +908,7 @@ function validateAssignmentResult(plan, input, roleAssignments = null, checkRole
     if (group.length < min || group.length > max) errors.push("그룹 정원을 지켜야 합니다.");
     if (input.twoStage && checkRoles) {
       const entries = roleAssignments?.[index];
-      if (!Array.isArray(entries) || entries.length !== group.length || new Set(entries.map((entry) => entry.member)).size !== group.length || new Set(entries.map((entry) => entry.role)).size !== input.roles.length || entries.some((entry) => !group.includes(entry.member) || !input.roles.includes(entry.role))) errors.push("역할 배정을 확인하세요.");
+      if (!Array.isArray(entries) || entries.length !== group.length || new Set(entries.map((entry) => entry.member)).size !== group.length || new Set(entries.map((entry) => entry.role)).size !== group.length || (input.requiredRoles || input.roles).some((role) => !entries.some((entry) => entry.role === role)) || entries.some((entry) => !group.includes(entry.member) || !input.roles.includes(entry.role) || !canAssignRole(input.profiles?.find((profile) => profile.name === entry.member), entry.role))) errors.push("역할 배정을 확인하세요.");
     }
   });
   errors.push(...validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules).filter((item) => item.type === "error").map((item) => item.detail));
