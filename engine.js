@@ -584,51 +584,32 @@ function hasSeparationConflict(group, component, separatedPairs) {
 }
 
 function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets) {
-  const groups = Array.from({ length: groupCount }, (_, index) => ({
-    id: index,
-    targetSize: targetSizes[index],
-    members: [],
-    components: [],
-  }));
-
-  const orderedComponents = shuffle(components).sort((left, right) => {
-    const leftFixed = fixedTargets.has(left.id) ? 1 : 0;
-    const rightFixed = fixedTargets.has(right.id) ? 1 : 0;
-    return rightFixed - leftFixed || right.size - left.size;
-  });
-
-  function place(index) {
-    if (index === orderedComponents.length) {
-      return groups.every((group) => group.members.length === group.targetSize);
+  const groups = Array.from({ length: groupCount }, (_, id) => ({ id, targetSize: targetSizes[id], members: [], components: [] }));
+  const pending = shuffle(components).sort((a, b) => b.size - a.size);
+  function domain(component) {
+    const fixed = fixedTargets.get(component.id);
+    return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, separatedPairs));
+  }
+  function place() {
+    if (!pending.length) return groups.every((group) => group.members.length === group.targetSize);
+    let selected = 0;
+    let candidates = null;
+    for (let index = 0; index < pending.length; index += 1) {
+      const choices = domain(pending[index]);
+      if (!choices.length) return false;
+      if (!candidates || choices.length < candidates.length) { selected = index; candidates = choices; }
+      if (candidates.length === 1) break;
     }
-
-    const component = orderedComponents[index];
-    const fixedTarget = fixedTargets.get(component.id);
-    const candidates = shuffle(groups).filter((group) => {
-      if (fixedTarget !== undefined && group.id !== fixedTarget) {
-        return false;
-      }
-
-      const fits = group.members.length + component.size <= group.targetSize;
-      return fits && !hasSeparationConflict(group, component, separatedPairs);
-    });
-
-    for (const group of candidates) {
-      group.components.push(component);
-      group.members.push(...shuffle(component.members));
-
-      if (place(index + 1)) {
-        return true;
-      }
-
-      group.components.pop();
-      group.members.splice(group.members.length - component.size, component.size);
+    const [component] = pending.splice(selected, 1);
+    for (const group of shuffle(candidates)) {
+      group.components.push(component); group.members.push(...component.members);
+      if (place()) return true;
+      group.components.pop(); group.members.splice(group.members.length - component.size, component.size);
     }
-
+    pending.splice(selected, 0, component);
     return false;
   }
-
-  return place(0) ? groups.map((group) => shuffle(group.members)) : null;
+  return place() ? groups.map((group) => shuffle(group.members)) : null;
 }
 
 function getAttributeBalanceScore(plan, attributeRules = []) {
