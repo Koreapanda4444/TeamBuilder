@@ -587,6 +587,8 @@ function hasSeparationConflict(group, component, graph) {
 function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets) {
   const graph = createSeparationGraph(separatedPairs);
   const groups = Array.from({ length: groupCount }, (_, id) => ({ id, targetSize: targetSizes[id], members: [], components: [], componentIds: new Set() }));
+  const failedStates = new Set();
+  const fixedGroups = new Set(fixedTargets.values());
   const pending = shuffle(components).sort((a, b) => b.size - a.size);
   function domain(component) {
     const fixed = fixedTargets.get(component.id);
@@ -606,6 +608,8 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
   }
   function place() {
     if (!pending.length) return groups.every((group) => group.members.length === group.targetSize);
+    const stateKey = groups.map((group) => [...group.componentIds].sort((a, b) => a - b).join(",")).join("|");
+    if (failedStates.has(stateKey)) return false;
     let selected = 0;
     let candidates = null;
     for (let index = 0; index < pending.length; index += 1) {
@@ -615,12 +619,18 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
       if (candidates.length === 1) break;
     }
     const [component] = pending.splice(selected, 1);
+    const emptySizes = new Set();
     for (const group of shuffle(candidates)) {
+      if (!group.members.length && !fixedGroups.has(group.id)) {
+        if (emptySizes.has(group.targetSize)) continue;
+        emptySizes.add(group.targetSize);
+      }
       group.components.push(component); group.componentIds.add(component.id); group.members.push(...component.members);
       if (forwardCheck() && place()) return true;
       group.components.pop(); group.componentIds.delete(component.id); group.members.splice(group.members.length - component.size, component.size);
     }
     pending.splice(selected, 0, component);
+    if (failedStates.size < 20000) failedStates.add(stateKey);
     return false;
   }
   return place() ? groups.map((group) => shuffle(group.members)) : null;
@@ -769,10 +779,14 @@ function buildPlan(input) {
 
   let bestPlan = null;
   let bestScore = Infinity;
+  const rejectedCapacities = new Set();
 
   for (let attempt = 0; attempt < input.attempts; attempt += 1) {
     const targetSizes = input.capacities || getTargetSizes(input.participants.length, input.groupCount);
+    const capacityKey = targetSizes.join(",");
+    if (rejectedCapacities.has(capacityKey)) continue;
     const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets);
+    if (!plan) rejectedCapacities.add(capacityKey);
 
     if (plan) {
       const score = getAttributeBalanceScore(plan, input.attributeRules);
