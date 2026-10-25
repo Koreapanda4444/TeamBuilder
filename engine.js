@@ -567,28 +567,30 @@ function getTargetSizes(total, groupCount) {
   return shuffle(sizes);
 }
 
-function hasSeparationConflict(group, component, separatedPairs) {
-  const groupComponentIds = new Set(group.components.map((item) => item.id));
-
-  return separatedPairs.some(([left, right]) => {
-    if (component.id === left && groupComponentIds.has(right)) {
-      return true;
-    }
-
-    if (component.id === right && groupComponentIds.has(left)) {
-      return true;
-    }
-
-    return false;
+function createSeparationGraph(pairs) {
+  const graph = new Map();
+  pairs.forEach(([left, right]) => {
+    if (!graph.has(left)) graph.set(left, new Set());
+    if (!graph.has(right)) graph.set(right, new Set());
+    graph.get(left).add(right); graph.get(right).add(left);
   });
+  return graph;
+}
+
+function hasSeparationConflict(group, component, graph) {
+  const neighbors = graph.get(component.id);
+  if (!neighbors) return false;
+  for (const id of group.componentIds) if (neighbors.has(id)) return true;
+  return false;
 }
 
 function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets) {
-  const groups = Array.from({ length: groupCount }, (_, id) => ({ id, targetSize: targetSizes[id], members: [], components: [] }));
+  const graph = createSeparationGraph(separatedPairs);
+  const groups = Array.from({ length: groupCount }, (_, id) => ({ id, targetSize: targetSizes[id], members: [], components: [], componentIds: new Set() }));
   const pending = shuffle(components).sort((a, b) => b.size - a.size);
   function domain(component) {
     const fixed = fixedTargets.get(component.id);
-    return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, separatedPairs));
+    return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, graph));
   }
   function forwardCheck() {
     const domains = pending.map((component) => ({ component, choices: domain(component) }));
@@ -614,9 +616,9 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
     }
     const [component] = pending.splice(selected, 1);
     for (const group of shuffle(candidates)) {
-      group.components.push(component); group.members.push(...component.members);
+      group.components.push(component); group.componentIds.add(component.id); group.members.push(...component.members);
       if (forwardCheck() && place()) return true;
-      group.components.pop(); group.members.splice(group.members.length - component.size, component.size);
+      group.components.pop(); group.componentIds.delete(component.id); group.members.splice(group.members.length - component.size, component.size);
     }
     pending.splice(selected, 0, component);
     return false;
