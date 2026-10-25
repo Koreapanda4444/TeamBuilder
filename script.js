@@ -66,6 +66,7 @@ let lastAudit = [];
 let lastQuality = null;
 let resultCandidates = [];
 let selectedMembers = new Set();
+let activeDrag = null;
 let selectedCandidateId = null;
 let resultHistory = [];
 const RESULT_HISTORY_KEY = "teambuilder.resultHistory.v2";
@@ -1056,6 +1057,21 @@ function bulkMoveMembers(targetIndex) {
   return applyManualPlan(plan, cloneRoleAssignments(lastRoleAssignments));
 }
 
+function finishDrag() {
+  activeDrag = null;
+  groupsGrid.querySelectorAll(".is-drop-target").forEach((element) => element.classList.remove("is-drop-target"));
+}
+
+function completeMemberDrop(targetIndex, other = null) {
+  const drag = activeDrag; finishDrag();
+  if (!drag || !canUseResult() || !lastPlan[drag.from]?.includes(drag.member) || isMemberProtected(drag.member) || targetIndex === drag.from) { renderGroups(lastPlan); return false; }
+  if (other) return swapMembers(drag.member, other);
+  const plan = clonePlan(lastPlan), source = plan[drag.from], target = plan[targetIndex];
+  if (!target) return false;
+  source.splice(source.indexOf(drag.member), 1); target.push(drag.member);
+  return applyManualPlan(plan, cloneRoleAssignments(lastRoleAssignments));
+}
+
 function renderMember(member, index, plan, memberRoles, groupNames, protectedMembers, current) {
   const item = document.createElement("li"), label = document.createElement("label"), checkbox = document.createElement("input"), name = document.createElement("span"), actions = document.createElement("div"), moveSelect = document.createElement("select"), lockButton = document.createElement("button");
   const locked = lockedAssignments.get(member) === index;
@@ -1083,6 +1099,19 @@ function renderMember(member, index, plan, memberRoles, groupNames, protectedMem
   swapSelect.disabled = isGenerating || !current || protectedMembers.has(member);
   swapSelect.addEventListener("change", () => { swapMembers(member, swapSelect.value); renderGroups(lastPlan); });
   actions.append(moveSelect, swapSelect, lockButton); item.append(label, actions);
+  item.draggable = current && !isGenerating && !protectedMembers.has(member);
+  item.dataset.member = member; item.setAttribute("aria-describedby", "dragHelp");
+  item.addEventListener("dragstart", (event) => {
+    if (!item.draggable) { event.preventDefault(); return; }
+    activeDrag = { member, from: index };
+    event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("application/x-teambuilder-member", JSON.stringify(activeDrag));
+  });
+  item.addEventListener("dragend", finishDrag);
+  item.addEventListener("dragover", (event) => {
+    if (activeDrag && activeDrag.from !== index && !protectedMembers.has(member)) { event.preventDefault(); event.stopPropagation(); item.classList.add("is-drop-target"); }
+  });
+  item.addEventListener("dragleave", () => item.classList.remove("is-drop-target"));
+  item.addEventListener("drop", (event) => { if (!activeDrag) return; event.preventDefault(); event.stopPropagation(); completeMemberDrop(index, member); renderGroups(lastPlan); });
   return item;
 }
 
@@ -1098,11 +1127,16 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
   const distributions = getAttributeDistributions(plan, input.profiles);
   plan.forEach((members, index) => {
     const card = document.createElement("article"), header = document.createElement("header"), title = document.createElement("h3"), count = document.createElement("span"), list = document.createElement("ul");
-    card.className = "group-card"; card.dataset = card.dataset || {}; card.dataset.groupIndex = String(index);
+    card.className = "group-card"; card.dataset.groupIndex = String(index);
     title.textContent = groupNames[index]; count.textContent = `${members.length}명`; card.setAttribute("aria-label", `${groupNames[index]}, ${members.length}명`); list.className = "member-list";
     const groupRoles = roleAssignments?.[index] || [], roles = new Map(groupRoles.map((entry) => [entry.member, entry.role]));
     const ordered = groupRoles.length === members.length && groupRoles.every((entry) => members.includes(entry.member)) ? groupRoles.map((entry) => entry.member) : members;
     ordered.filter((member) => matchesParticipant(member, input)).forEach((member) => list.append(renderMember(member, index, plan, roles, groupNames, protectedMembers, current)));
+    card.addEventListener("dragover", (event) => {
+      if (activeDrag && activeDrag.from !== index && current && !isGenerating) { event.preventDefault(); card.classList.add("is-drop-target"); }
+    });
+    card.addEventListener("dragleave", () => card.classList.remove("is-drop-target"));
+    card.addEventListener("drop", (event) => { if (!activeDrag) return; event.preventDefault(); completeMemberDrop(index); renderGroups(lastPlan); });
     header.append(title, count); card.append(header);
     if (distributions.length) { const summary = document.createElement("p"); summary.className = "attribute-summary"; summary.textContent = distributions.map((entry) => `${entry.dimension}: ${entry.type === "numeric" ? (entry.groups[index].mean?.toFixed(1) ?? "—") : Object.entries(entry.groups[index].values).map(([value, amount]) => `${value} ${amount}`).join(", ")}`).join(" · "); card.append(summary); }
     card.append(list); groupsGrid.append(card);

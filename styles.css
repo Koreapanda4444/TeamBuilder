@@ -991,3 +991,7 @@ select:focus-visible,
 .member-label { display: flex; align-items: center; gap: 7px; min-width: 0; }
 .attribute-summary { margin: 0; padding: 6px 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 input[type="search"] { min-height: 34px; width: 100%; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; }
+
+.member-list li[draggable="true"] { cursor: grab; }
+.is-drop-target { outline: 2px solid var(--primary); outline-offset: -2px; background: #edf7f4 !important; }
+.editing-help { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
