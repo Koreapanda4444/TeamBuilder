@@ -1368,7 +1368,14 @@ function refreshAuditForCurrentPlan(extraItems = []) {
   renderAudit([...extraItems, ...audit], input);
 }
 
+function isMemberProtected(member) {
+  const input = getInputs();
+  const component = createComponents(input.participants, input.togetherRules).find((item) => item.members.includes(member));
+  return (component?.members || [member]).some((name) => lockedAssignments.has(name) || input.fixedRules.some((rule) => rule.member === name));
+}
+
 function toggleMemberLock(member, groupIndex) {
+  if (isGenerating || !isResultCurrent() || !lastPlan?.[groupIndex]?.includes(member)) return;
   const groupNames = getGroupNames(lastPlan?.length || 0);
   const wasLocked = lockedAssignments.get(member) === groupIndex;
 
@@ -1399,6 +1406,11 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
     return;
   }
 
+  if (isGenerating || !isResultCurrent() || isMemberProtected(member)) {
+    setStatus("고정 또는 변경된 조건을 확인한 뒤 다시 생성하세요.", "error");
+    renderGroups(lastPlan);
+    return;
+  }
   const source = lastPlan[fromGroupIndex];
   const target = lastPlan[toGroupIndex];
 
@@ -1415,7 +1427,7 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
   }
 
   const keepCapacities = Boolean(lastRoleAssignments || lastCapacities);
-  const swapMember = keepCapacities ? target.find((name) => !lockedAssignments.has(name)) : null;
+  const swapMember = keepCapacities ? target.find((name) => !isMemberProtected(name)) : null;
   if (keepCapacities && !swapMember) {
     renderAudit([{ type: "error", title: "이동 확인", detail: "대상 그룹의 고정을 해제한 뒤 다시 이동하세요." }]);
     setStatus("입력을 확인한 뒤 다시 시도하세요.", "error");
@@ -1503,7 +1515,7 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
       });
 
       moveSelect.value = String(index);
-      moveSelect.disabled = isGenerating;
+      moveSelect.disabled = isGenerating || !isResultCurrent() || isMemberProtected(member);
       moveSelect.addEventListener("change", (event) => moveMember(member, index, Number(event.target.value)));
 
       lockButton.className = "lock-button";
