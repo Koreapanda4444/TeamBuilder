@@ -144,6 +144,7 @@ function parseParticipantCSV(text) {
     return { name, role: roleIndex === -1 ? "" : cells[roleIndex].trim() };
   });
   if (!records.length) throw new Error("CSV에 참가자가 없습니다.");
+  if (duplicateItems(records.map((record) => record.name)).length || records.some((record) => /[\u0000-\u001f\u007f]/u.test(record.name))) throw new Error("CSV 이름의 중복 또는 제어 문자를 확인하세요.");
   return records;
 }
 
@@ -163,6 +164,7 @@ async function importParticipantCSV(event) {
   const file = event.target.files?.[0];
   if (!file || isGenerating) return;
   try {
+    if (file.size > 2000000) throw new Error("파일은 2MB 이하여야 합니다.");
     const records = parseParticipantCSV(await file.text());
     if (isGenerating) return;
     applyParticipantRecords(records);
@@ -412,7 +414,12 @@ function loadSavedSettings() {
   try {
     const raw = storage.getItem(SAVED_SETTINGS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
-    savedSettings = Array.isArray(parsed) ? parsed : [];
+    savedSettings = Array.isArray(parsed) ? parsed.flatMap((item) => {
+      try {
+        if (!item || typeof item.id !== "string" || typeof item.name !== "string") return [];
+        return [{ ...item, settings: parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: item.settings })) }];
+      } catch { return []; }
+    }) : [];
   } catch {
     savedSettings = [];
   }
@@ -1947,7 +1954,8 @@ function formatCopyResult(plan, groupNames, auditItems, mode, roleAssignments = 
 }
 
 function encodeCSVCell(value) {
-  const text = String(value);
+  const raw = String(value);
+  const text = /^[\s]*[=+@-]|^[\t\r\n]/u.test(raw) ? "'" + raw : raw;
   return /[",\r\n]/u.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -2013,6 +2021,7 @@ function buildSettingsJSON(settings = getDraftSettings()) {
 }
 
 function parseSettingsJSON(text) {
+  if (typeof text !== "string" || text.length > 2000000) throw new Error("설정 파일이 너무 큽니다.");
   const data = JSON.parse(text.replace(/^\uFEFF/u, ""));
   if (!data || typeof data !== "object" || Array.isArray(data) || data.app !== "TeamBuilder" || data.version !== 1) {
     throw new Error("지원하는 TeamBuilder 설정 JSON이 아닙니다.");
@@ -2031,6 +2040,7 @@ function parseSettingsJSON(text) {
     }
     settings[key] = source[key] === undefined ? fallback : String(source[key]);
   }
+  if (!/^\d+$/u.test(settings.groupCount) || Number(settings.groupCount) < 2 || Number(settings.groupCount) > 24 || !/^\d+$/u.test(settings.rollCount) || Number(settings.rollCount) < 1 || Number(settings.rollCount) > MAX_ROLL_COUNT) throw new Error("JSON 그룹 수 또는 돌리기 범위를 확인하세요.");
   if (source.twoStage !== undefined && typeof source.twoStage !== "boolean") throw new Error("JSON 2단계 배정 설정의 형식을 확인하세요.");
   settings.twoStage = source.twoStage === true;
   settings.participantRecords = null;
@@ -2038,6 +2048,7 @@ function parseSettingsJSON(text) {
     if (!Array.isArray(source.participantRecords) || source.participantRecords.some((record) => !record || typeof record.name !== "string" || !record.name.trim() || (record.role !== undefined && typeof record.role !== "string"))) {
       throw new Error("JSON 참가자 정보의 형식을 확인하세요.");
     }
+    if (source.participantRecords.some((record) => Array.isArray(record) || /[\u0000-\u001f\u007f]/u.test(record.name)) || duplicateItems(source.participantRecords.map((record) => record.name.trim())).length) throw new Error("JSON 참가자 이름을 확인하세요.");
     settings.participantRecords = source.participantRecords.map((record) => ({ name: record.name, role: record.role || "" }));
     if (settings.participants !== settings.participantRecords.map((record) => record.name).join("\n")) {
       throw new Error("JSON 참가자 정보와 명단이 일치하지 않습니다.");
@@ -2075,6 +2086,7 @@ async function importSettingsJSON(event) {
   const file = event.target.files?.[0];
   if (!file || isGenerating) return;
   try {
+    if (file.size > 2000000) throw new Error("파일은 2MB 이하여야 합니다.");
     const settings = parseSettingsJSON(await file.text());
     if (isGenerating) return;
     restoreSettings(settings);
