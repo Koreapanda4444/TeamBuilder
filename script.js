@@ -15,6 +15,8 @@ const attributesInput = document.querySelector("#attributesInput");
 const twoStageInput = document.querySelector("#twoStageInput");
 const rolesInput = document.querySelector("#rolesInput");
 const generateButton = document.querySelector("#generateButton");
+const cancelButton = document.querySelector("#cancelButton");
+const generationProgress = document.querySelector("#generationProgress");
 const resetButton = document.querySelector("#resetButton");
 const importJSONButton = document.querySelector("#importJSONButton");
 const exportJSONButton = document.querySelector("#exportJSONButton");
@@ -55,6 +57,8 @@ let editHistory = [];
 let redoHistory = [];
 let isGenerating = false;
 let activeWorker = null;
+let cancelActiveComputation = null;
+let generationCancelled = false;
 const DEFAULT_ATTEMPTS = 1800;
 const DEFAULT_ROLL_COUNT = 1;
 const MAX_ROLL_COUNT = 30;
@@ -126,6 +130,10 @@ function refreshResultConsistency() {
 }
 
 function setGenerateBusy(active) {
+  cancelButton.hidden = !active;
+  cancelButton.disabled = !active;
+  generationProgress.hidden = !active;
+  groupsGrid.setAttribute("aria-busy", String(active));
   generateButton.disabled = active;
   importCSVButton.disabled = active;
   participantCSVFile.disabled = active;
@@ -414,9 +422,25 @@ function getInputs() {
 
 
 
-async function computePlan(input, onProgress = null) {
+function cancelledResult() { return { status: "cancelled", error: "배정을 취소했습니다.", audit: [] }; }
+
+function reportSearchProgress(progress) {
+  generationProgress.max = Number(searchOperationsInput.value) || 1000000;
+  generationProgress.value = progress.operations;
+  setStatus(`${progress.operations.toLocaleString()}회 검사 · ${progress.nodes.toLocaleString()}개 탐색 · ${progress.elapsedMs}ms`);
+}
+
+function cancelGeneration() {
+  if (!isGenerating) return;
+  generationCancelled = true;
+  cancelActiveComputation?.();
+  setStatus("배정을 취소하는 중입니다.");
+}
+
+async function computePlan(input, onProgress = reportSearchProgress) {
   const fallback = async () => {
     await waitForResultPaint();
+    if (generationCancelled) return cancelledResult();
     return buildPlan({ ...input, maxMs: Math.min(input.maxMs || 3000, 150) }, { onProgress });
   };
   if (typeof Worker === "undefined") return fallback();
@@ -424,7 +448,8 @@ async function computePlan(input, onProgress = null) {
     return await new Promise((resolve, reject) => {
       const worker = new Worker(new URL("assignment-worker.js", document.baseURI));
       activeWorker = worker;
-      const cleanup = () => { worker.terminate(); if (activeWorker === worker) activeWorker = null; };
+      const cleanup = () => { worker.terminate(); if (activeWorker === worker) { activeWorker = null; cancelActiveComputation = null; } };
+      cancelActiveComputation = () => { cleanup(); resolve(cancelledResult()); };
       worker.onmessage = ({ data }) => {
         if (data.type === "progress") { onProgress?.(data.progress); return; }
         cleanup(); resolve(data.result);
@@ -454,8 +479,10 @@ async function buildRolledPlan(input, onProgress = null) {
   }
 
   for (let rollIndex = 1; rollIndex <= rollCount; rollIndex += 1) {
+    if (generationCancelled) return cancelledResult();
     const result = await computePlan({ ...rollInput, seed: `${input.seed}:${rollIndex}` });
 
+    if (result.status === "cancelled") return result;
     if (result.error) {
       lastError = result;
       if (onProgress) {
@@ -1073,6 +1100,9 @@ async function generate() {
     return;
   }
 
+  generationCancelled = false;
+  const previousResult = createResultSnapshot();
+  generationProgress.value = 0;
   isGenerating = true;
   setGenerateBusy(true);
 
@@ -1126,6 +1156,12 @@ async function generate() {
       );
     });
 
+    if (generationCancelled || result.status === "cancelled") {
+      if (previousResult) restoreResultSnapshot(previousResult);
+      else { lastPlan = null; renderGroups(null); renderAudit([]); }
+      setResultState("취소됨"); setStatus("배정을 취소했습니다. 다시 생성할 수 있습니다.");
+      return;
+    }
     if (result.error) {
       lastPlan = null;
       lastRoleAssignments = null;
@@ -1438,6 +1474,7 @@ exportJSONButton.addEventListener("click", exportSettingsJSON);
 settingsJSONFile.addEventListener("change", importSettingsJSON);
 twoStageInput.addEventListener("change", syncTwoStageControls);
 generateButton.addEventListener("click", generate);
+cancelButton.addEventListener("click", cancelGeneration);
 resetButton.addEventListener("click", () => reset());
 undoEditButton.addEventListener("click", undoLastEdit);
 redoEditButton.addEventListener("click", redoLastEdit);

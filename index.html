@@ -114,8 +114,10 @@
 
           <div class="action-row">
             <button class="primary-button" id="generateButton" type="button">생성</button>
+            <button class="secondary-button" id="cancelButton" type="button" hidden>취소</button>
           </div>
 
+          <progress id="generationProgress" max="1000000" value="0" hidden aria-label="배정 탐색 진행 상태"></progress>
           <p class="status-message" id="statusMessage" role="status" aria-live="polite" aria-atomic="true"></p>
         </aside>
 
