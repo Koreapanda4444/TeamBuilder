@@ -590,6 +590,18 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
     const fixed = fixedTargets.get(component.id);
     return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, separatedPairs));
   }
+  function forwardCheck() {
+    const domains = pending.map((component) => ({ component, choices: domain(component) }));
+    if (domains.some((item) => item.choices.length === 0)) return false;
+    return groups.every((group) => {
+      const space = group.targetSize - group.members.length;
+      let possible = 0, forced = 0;
+      domains.forEach(({ component, choices }) => {
+        if (choices.includes(group)) { possible += component.size; if (choices.length === 1) forced += component.size; }
+      });
+      return possible >= space && forced <= space;
+    });
+  }
   function place() {
     if (!pending.length) return groups.every((group) => group.members.length === group.targetSize);
     let selected = 0;
@@ -603,7 +615,7 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
     const [component] = pending.splice(selected, 1);
     for (const group of shuffle(candidates)) {
       group.components.push(component); group.members.push(...component.members);
-      if (place()) return true;
+      if (forwardCheck() && place()) return true;
       group.components.pop(); group.members.splice(group.members.length - component.size, component.size);
     }
     pending.splice(selected, 0, component);
