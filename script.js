@@ -65,6 +65,7 @@ let resultInputSignature = null;
 let lastAudit = [];
 let lastQuality = null;
 let resultCandidates = [];
+let selectedMembers = new Set();
 let selectedCandidateId = null;
 let resultHistory = [];
 const RESULT_HISTORY_KEY = "teambuilder.resultHistory.v2";
@@ -740,11 +741,12 @@ function refreshAuditForCurrentPlan(extraItems = []) {
   renderAudit([...extraItems, ...audit], input);
 }
 
-function isMemberProtected(member) {
-  const input = getInputs();
-  const component = createComponents(input.participants, input.togetherRules).find((item) => item.members.includes(member));
-  return (component?.members || [member]).some((name) => lockedAssignments.has(name) || input.fixedRules.some((rule) => rule.member === name));
+function getProtectedMembers(input) {
+  const fixed = new Set([...lockedAssignments.keys(), ...input.fixedRules.map((rule) => rule.member)]);
+  return new Set(createComponents(input.participants, input.togetherRules).filter((component) => component.members.some((name) => fixed.has(name))).flatMap((component) => component.members));
 }
+
+function isMemberProtected(member) { return getProtectedMembers(getInputs()).has(member); }
 
 function toggleMemberLock(member, groupIndex) {
   if (isGenerating || !isResultCurrent() || !lastPlan?.[groupIndex]?.includes(member)) return;
@@ -1007,97 +1009,103 @@ function renderQuality() {
   for (const [key, id] of [["total", "totalQuality"], ["balance", "balanceQuality"], ["role", "roleQuality"]]) document.querySelector(`#${id}`).textContent = lastQuality ? lastQuality[key].toFixed(1) : "—";
 }
 
-function renderGroups(plan, roleAssignments = lastRoleAssignments) {
-  renderQuality();
-  renderCandidates();
-  groupsGrid.innerHTML = "";
-  emptyState.classList.toggle("is-hidden", Boolean(plan));
-  updateUndoButtonState();
+function matchesParticipant(member, input = getInputs()) {
+  const query = document.querySelector("#participantSearch").value.trim().toLocaleLowerCase();
+  const profile = input.profiles.find((item) => item.name === member);
+  const role = lastRoleAssignments?.flat().find((entry) => entry.member === member)?.role || "";
+  return !query || `${member} ${role} ${Object.values(profile?.attributes || {}).join(" ")}`.toLocaleLowerCase().includes(query);
+}
 
-  if (!plan) {
-    return;
-  }
+function updateBulkControls() {
+  document.querySelector("#selectionCount").textContent = `${selectedMembers.size}명 선택`;
+  for (const id of ["selectVisibleButton", "bulkTargetSelect", "bulkMoveButton", "bulkLockButton", "bulkUnlockButton"]) document.querySelector(`#${id}`).disabled = isGenerating || !isResultCurrent();
+}
 
-  const groupNames = getGroupNames(plan.length);
+function selectVisibleMembers() {
+  if (!canUseResult()) return;
+  const input = getInputs(), visible = lastPlan.flat().filter((member) => matchesParticipant(member, input));
+  const all = visible.every((member) => selectedMembers.has(member));
+  visible.forEach((member) => all ? selectedMembers.delete(member) : selectedMembers.add(member));
+  renderGroups(lastPlan);
+}
 
-  plan.forEach((members, index) => {
-    const card = document.createElement("article");
-    card.className = "group-card";
+function bulkSetLocks(locked) {
+  if (!canUseResult() || !selectedMembers.size) return false;
+  pushEditHistory();
+  selectedMembers.forEach((member) => locked ? lockedAssignments.set(member, lastPlan.findIndex((group) => group.includes(member))) : lockedAssignments.delete(member));
+  renderGroups(lastPlan); refreshAuditForCurrentPlan(); saveDraft(); return true;
+}
 
-    const header = document.createElement("header");
-    const title = document.createElement("h3");
-    const count = document.createElement("span");
-    const list = document.createElement("ul");
-
-    title.textContent = groupNames[index];
-    count.textContent = `${members.length}명`;
-    card.setAttribute("aria-label", `${groupNames[index]}, ${members.length}명`);
-    list.className = "member-list";
-    list.setAttribute("role", "list");
-
-    const groupRoles = roleAssignments?.[index] || [];
-    const memberRoles = new Map(groupRoles.map((entry) => [entry.member, entry.role]));
-    const orderedMembers = groupRoles.length === members.length && groupRoles.every((entry) => members.includes(entry.member))
-      ? groupRoles.map((entry) => entry.member) : members;
-    orderedMembers.forEach((member) => {
-      const item = document.createElement("li");
-      const name = document.createElement("span");
-      const actions = document.createElement("div");
-      const moveSelect = document.createElement("select");
-      const lockButton = document.createElement("button");
-      const locked = lockedAssignments.get(member) === index;
-
-      const role = memberRoles.get(member);
-      name.textContent = role ? `${role} — ${member}` : member;
-      actions.className = "member-actions";
-      moveSelect.className = "member-move-select";
-      moveSelect.setAttribute("aria-label", `${member} 이동할 그룹`);
-
-      groupNames.forEach((groupName, groupIndex) => {
-        const option = document.createElement("option");
-        option.value = String(groupIndex);
-        option.textContent = groupName;
-        moveSelect.append(option);
-      });
-
-      moveSelect.value = String(index);
-      moveSelect.disabled = isGenerating || !isResultCurrent() || isMemberProtected(member);
-      moveSelect.addEventListener("change", (event) => moveMember(member, index, Number(event.target.value)));
-
-      lockButton.className = "lock-button";
-      lockButton.classList.toggle("is-locked", locked);
-      lockButton.type = "button";
-      lockButton.disabled = isGenerating;
-      lockButton.textContent = locked ? "해제" : "고정";
-      lockButton.setAttribute("aria-pressed", String(locked));
-      lockButton.setAttribute("aria-label", locked ? `${member} 고정 해제` : `${member} 현재 그룹에 고정`);
-      lockButton.addEventListener("click", () => toggleMemberLock(member, index));
-
-      const swapSelect = document.createElement("select");
-      swapSelect.className = "member-move-select";
-      swapSelect.setAttribute("aria-label", `${member} 교환 상대`);
-      const placeholder = document.createElement("option");
-      placeholder.value = ""; placeholder.textContent = "교환 상대";
-      swapSelect.append(placeholder);
-      plan.forEach((group, targetIndex) => {
-        if (targetIndex === index) return;
-        group.forEach((other) => {
-          const option = document.createElement("option");
-          option.value = other; option.textContent = `${groupNames[targetIndex]}: ${other}`;
-          option.disabled = isMemberProtected(other);
-          swapSelect.append(option);
-        });
-      });
-      swapSelect.disabled = isGenerating || !isResultCurrent() || isMemberProtected(member);
-      swapSelect.addEventListener("change", () => { swapMembers(member, swapSelect.value); renderGroups(lastPlan); });
-      actions.append(moveSelect, swapSelect, lockButton);
-      item.append(name, actions);
-      list.append(item);
+function bulkMoveMembers(targetIndex) {
+  if (!canUseResult() || !lastPlan[targetIndex] || !selectedMembers.size) return false;
+  const selected = [...selectedMembers], protectedMembers = getProtectedMembers(getInputs());
+  const moving = selected.filter((member) => !lastPlan[targetIndex].includes(member));
+  const counterparts = selected.filter((member) => lastPlan[targetIndex].includes(member));
+  if (!moving.length || selected.some((member) => protectedMembers.has(member))) { setStatus("고정된 참가자는 이동할 수 없습니다.", "error"); return false; }
+  const plan = clonePlan(lastPlan);
+  if (counterparts.length) {
+    if (counterparts.length !== moving.length) { setStatus("교환할 양쪽 참가자를 같은 수로 선택하세요.", "error"); return false; }
+    moving.forEach((member, index) => {
+      const from = plan.findIndex((group) => group.includes(member)), other = counterparts[index];
+      plan[from][plan[from].indexOf(member)] = other;
+      plan[targetIndex][plan[targetIndex].indexOf(other)] = member;
     });
+  } else moving.forEach((member) => {
+    const source = plan.find((group) => group.includes(member)); source.splice(source.indexOf(member), 1); plan[targetIndex].push(member);
+  });
+  return applyManualPlan(plan, cloneRoleAssignments(lastRoleAssignments));
+}
 
-    header.append(title, count);
-    card.append(header, list);
-    groupsGrid.append(card);
+function renderMember(member, index, plan, memberRoles, groupNames, protectedMembers, current) {
+  const item = document.createElement("li"), label = document.createElement("label"), checkbox = document.createElement("input"), name = document.createElement("span"), actions = document.createElement("div"), moveSelect = document.createElement("select"), lockButton = document.createElement("button");
+  const locked = lockedAssignments.get(member) === index;
+  checkbox.type = "checkbox"; checkbox.checked = selectedMembers.has(member); checkbox.disabled = isGenerating || !current;
+  checkbox.setAttribute("aria-label", `${member} 선택`);
+  checkbox.addEventListener("change", () => { checkbox.checked ? selectedMembers.add(member) : selectedMembers.delete(member); updateBulkControls(); });
+  label.className = "member-label"; label.append(checkbox, name);
+  const role = memberRoles.get(member); name.textContent = role ? `${role} — ${member}` : member;
+  actions.className = "member-actions"; moveSelect.className = "member-move-select"; moveSelect.setAttribute("aria-label", `${member} 이동할 그룹`);
+  groupNames.forEach((groupName, groupIndex) => { const option = document.createElement("option"); option.value = String(groupIndex); option.textContent = groupName; moveSelect.append(option); });
+  moveSelect.value = String(index); moveSelect.disabled = isGenerating || !current || protectedMembers.has(member);
+  moveSelect.addEventListener("change", (event) => moveMember(member, index, Number(event.target.value)));
+  lockButton.className = "lock-button"; lockButton.classList.toggle("is-locked", locked); lockButton.type = "button"; lockButton.disabled = isGenerating || !current;
+  lockButton.textContent = locked ? "해제" : "고정"; lockButton.setAttribute("aria-pressed", String(locked)); lockButton.setAttribute("aria-label", locked ? `${member} 고정 해제` : `${member} 현재 그룹에 고정`);
+  lockButton.addEventListener("click", () => toggleMemberLock(member, index));
+  const swapSelect = document.createElement("select"), placeholder = document.createElement("option");
+  swapSelect.className = "member-move-select"; swapSelect.setAttribute("aria-label", `${member} 교환 상대`); placeholder.value = ""; placeholder.textContent = "교환 상대"; swapSelect.append(placeholder);
+  let populated = false;
+  swapSelect.addEventListener("focus", () => {
+    if (populated) return; populated = true;
+    plan.forEach((group, targetIndex) => { if (targetIndex === index) return; group.forEach((other) => {
+      const option = document.createElement("option"); option.value = other; option.textContent = `${groupNames[targetIndex]}: ${other}`; option.disabled = protectedMembers.has(other); swapSelect.append(option);
+    }); });
+  });
+  swapSelect.disabled = isGenerating || !current || protectedMembers.has(member);
+  swapSelect.addEventListener("change", () => { swapMembers(member, swapSelect.value); renderGroups(lastPlan); });
+  actions.append(moveSelect, swapSelect, lockButton); item.append(label, actions);
+  return item;
+}
+
+function renderGroups(plan, roleAssignments = lastRoleAssignments) {
+  renderQuality(); renderCandidates(); groupsGrid.replaceChildren();
+  emptyState.classList.toggle("is-hidden", Boolean(plan)); updateUndoButtonState();
+  selectedMembers = new Set([...selectedMembers].filter((member) => plan?.some((group) => group.includes(member))));
+  updateBulkControls();
+  if (!plan) return;
+  const input = getInputs(), protectedMembers = getProtectedMembers(input), current = isResultCurrent() && plan === lastPlan;
+  const groupNames = getGroupNames(plan.length), target = document.querySelector("#bulkTargetSelect"), chosenTarget = target.value;
+  target.replaceChildren(); groupNames.forEach((name, index) => { const option = document.createElement("option"); option.value = String(index); option.textContent = name; target.append(option); }); target.value = chosenTarget || "0";
+  const distributions = getAttributeDistributions(plan, input.profiles);
+  plan.forEach((members, index) => {
+    const card = document.createElement("article"), header = document.createElement("header"), title = document.createElement("h3"), count = document.createElement("span"), list = document.createElement("ul");
+    card.className = "group-card"; card.dataset = card.dataset || {}; card.dataset.groupIndex = String(index);
+    title.textContent = groupNames[index]; count.textContent = `${members.length}명`; card.setAttribute("aria-label", `${groupNames[index]}, ${members.length}명`); list.className = "member-list";
+    const groupRoles = roleAssignments?.[index] || [], roles = new Map(groupRoles.map((entry) => [entry.member, entry.role]));
+    const ordered = groupRoles.length === members.length && groupRoles.every((entry) => members.includes(entry.member)) ? groupRoles.map((entry) => entry.member) : members;
+    ordered.filter((member) => matchesParticipant(member, input)).forEach((member) => list.append(renderMember(member, index, plan, roles, groupNames, protectedMembers, current)));
+    header.append(title, count); card.append(header);
+    if (distributions.length) { const summary = document.createElement("p"); summary.className = "attribute-summary"; summary.textContent = distributions.map((entry) => `${entry.dimension}: ${entry.type === "numeric" ? (entry.groups[index].mean?.toFixed(1) ?? "—") : Object.entries(entry.groups[index].values).map(([value, amount]) => `${value} ${amount}`).join(", ")}`).join(" · "); card.append(summary); }
+    card.append(list); groupsGrid.append(card);
   });
 }
 
@@ -1778,6 +1786,11 @@ redoEditButton.addEventListener("click", redoLastEdit);
 profileMemberSelect.addEventListener("change", renderSelectedProfile);
 profileApplyButton.addEventListener("click", applyProfileConfiguration);
 weightsApplyButton.addEventListener("click", applyWeightConfiguration);
+document.querySelector("#participantSearch").addEventListener("input", () => renderGroups(lastPlan));
+document.querySelector("#selectVisibleButton").addEventListener("click", selectVisibleMembers);
+document.querySelector("#bulkLockButton").addEventListener("click", () => bulkSetLocks(true));
+document.querySelector("#bulkUnlockButton").addEventListener("click", () => bulkSetLocks(false));
+document.querySelector("#bulkMoveButton").addEventListener("click", () => bulkMoveMembers(Number(document.querySelector("#bulkTargetSelect").value)));
 clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
 exportCSVButton.addEventListener("click", exportResultCSV);

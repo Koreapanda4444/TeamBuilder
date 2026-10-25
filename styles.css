@@ -985,3 +985,9 @@ select:focus-visible,
 .candidate-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0; }
 .candidate-button { padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-soft); color: var(--text); font-size: 12px; }
 .candidate-button[aria-pressed="true"] { border-color: var(--primary); background: #edf7f4; }
+
+.bulk-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 6px; }
+.search-field { flex: 1 1 160px; }
+.member-label { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.attribute-summary { margin: 0; padding: 6px 12px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+input[type="search"] { min-height: 34px; width: 100%; padding: 5px 9px; border: 1px solid var(--line); border-radius: 7px; }
