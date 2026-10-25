@@ -1012,7 +1012,7 @@ function validatePlan(plan, togetherRules, separateRules, fixedRules = [], attri
   for (const rule of togetherRules) {
     const [first, ...rest] = rule.members;
     const firstGroup = groupIndexByName.get(first);
-    const passed = rest.every((member) => groupIndexByName.get(member) === firstGroup);
+    const passed = firstGroup !== undefined && rest.every((member) => groupIndexByName.get(member) === firstGroup);
 
     audit.push({
       type: passed ? "ok" : "error",
@@ -1022,7 +1022,7 @@ function validatePlan(plan, togetherRules, separateRules, fixedRules = [], attri
   }
 
   for (const rule of separateRules) {
-    let passed = true;
+    let passed = rule.members.every((member) => groupIndexByName.has(member));
 
     for (let left = 0; left < rule.members.length; left += 1) {
       for (let right = left + 1; right < rule.members.length; right += 1) {
@@ -1128,6 +1128,8 @@ function buildPlan(input) {
   }
 
   if (bestPlan) {
+    const errors = validateAssignmentResult(bestPlan, input, null, false);
+    if (errors.length) return { error: errors[0], audit: errors.map((detail) => ({ type: "error", title: "결과 검증 실패", detail })) };
     return {
       plan: bestPlan,
       score: bestScore,
@@ -1407,20 +1409,28 @@ function toggleMemberLock(member, groupIndex) {
   setStatus(wasLocked ? `${member}의 고정을 해제했습니다.` : `${member}를 고정했습니다.`, "success");
 }
 
+function validateAssignmentResult(plan, input, roleAssignments = null, checkRoles = true) {
+  const errors = [...(input.errors || [])];
+  if (!Array.isArray(plan) || plan.length !== input.groupCount || plan.some((group) => !Array.isArray(group))) return [...errors, "그룹 구조가 올바르지 않습니다."];
+  const members = plan.flat();
+  if (members.length !== input.participants.length || new Set(members).size !== members.length || members.some((member) => !input.participants.includes(member)) || input.participants.some((member) => !members.includes(member))) errors.push("참가자 누락 또는 중복입니다.");
+  plan.forEach((group, index) => {
+    const min = input.capacities?.[index] ?? Math.floor(input.participants.length / input.groupCount);
+    const max = input.capacities?.[index] ?? Math.ceil(input.participants.length / input.groupCount);
+    if (group.length < min || group.length > max) errors.push("그룹 정원을 지켜야 합니다.");
+    if (input.twoStage && checkRoles) {
+      const entries = roleAssignments?.[index];
+      if (!Array.isArray(entries) || entries.length !== group.length || new Set(entries.map((entry) => entry.member)).size !== group.length || new Set(entries.map((entry) => entry.role)).size !== input.roles.length || entries.some((entry) => !group.includes(entry.member) || !input.roles.includes(entry.role))) errors.push("역할 배정을 확인하세요.");
+    }
+  });
+  errors.push(...validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules).filter((item) => item.type === "error").map((item) => item.detail));
+  return errors;
+}
+
 function validateManualPlan(plan, roleAssignments) {
   const input = getInputs();
-  const rules = [...input.fixedRules, ...[...lockedAssignments].map(([member, groupIndex]) => ({ member, groupIndex }))];
-  const errors = [...input.errors];
-  const members = plan.flat();
-  if (plan.length !== input.groupCount || members.length !== input.participants.length || new Set(members).size !== members.length || input.participants.some((member) => !members.includes(member))) errors.push("참가자 누락 또는 중복입니다.");
-  plan.forEach((group, index) => {
-    const min = input.capacities?.[index] ?? Math.floor(members.length / input.groupCount);
-    const max = input.capacities?.[index] ?? Math.ceil(members.length / input.groupCount);
-    if (group.length < min || group.length > max) errors.push("그룹 정원을 지켜야 합니다.");
-    if (input.twoStage && (!roleAssignments?.[index] || roleAssignments[index].length !== group.length || new Set(roleAssignments[index].map((entry) => entry.role)).size !== input.roles.length || group.some((member) => !roleAssignments[index].some((entry) => entry.member === member && input.roles.includes(entry.role))))) errors.push("역할 배정을 확인하세요.");
-  });
-  errors.push(...validatePlan(plan, input.togetherRules, input.separateRules, rules, input.attributeRules).filter((item) => item.type === "error").map((item) => item.detail));
-  return errors;
+  input.fixedRules = [...input.fixedRules, ...[...lockedAssignments].map(([member, groupIndex]) => ({ member, groupIndex }))];
+  return validateAssignmentResult(plan, input, roleAssignments);
 }
 
 function applyManualPlan(plan, roles = lastRoleAssignments) {
@@ -1864,8 +1874,17 @@ async function generate() {
       return;
     }
 
+    const assignedRoles = input.twoStage ? assignRolesToPlan(result.plan, input.roles) : null;
+    const validationErrors = validateAssignmentResult(result.plan, input, assignedRoles);
+    if (validationErrors.length) {
+      lastPlan = null; lastRoleAssignments = null;
+      renderGroups(null);
+      renderAudit(validationErrors.map((detail) => ({ type: "error", title: "결과 검증 실패", detail })));
+      setResultState("검증 실패", "error"); setStatus(validationErrors[0], "error");
+      return;
+    }
     lastPlan = result.plan;
-    lastRoleAssignments = input.twoStage ? assignRolesToPlan(result.plan, input.roles) : null;
+    lastRoleAssignments = assignedRoles;
     lastCapacities = input.capacities ? [...input.capacities] : null;
     resultInputSignature = getInputSignature();
     lastAudit = result.audit;
