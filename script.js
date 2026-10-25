@@ -67,6 +67,8 @@ let resultCandidates = [];
 let selectedCandidateId = null;
 let resultHistory = [];
 const RESULT_HISTORY_KEY = "teambuilder.resultHistory.v2";
+const DRAFT_STORAGE_KEY = "teambuilder.draft.v2";
+let draftSaveTimer = null;
 let savedSettings = [];
 let activeSavedSettingId = null;
 let lockedAssignments = new Map();
@@ -285,12 +287,12 @@ function applyDraftSettings(settings) {
   balanceWeights = normalizeBalanceWeights(settings?.balanceWeights || {});
   rolePreferenceWeight = settings?.rolePreferenceWeight ?? 1;
   seedInput.value = settings?.seed || "";
-  searchTimeInput.value = settings?.maxMs || "3000";
-  searchOperationsInput.value = settings?.maxOperations || "1000000";
+  searchTimeInput.value = settings?.maxMs ?? "3000";
+  searchOperationsInput.value = settings?.maxOperations ?? "1000000";
   participantsInput.value = settings?.participants || "";
   participantRecords = Array.isArray(settings?.participantRecords) ? settings.participantRecords.map(normalizeParticipantProfile) : null;
-  groupCountInput.value = settings?.groupCount || "3";
-  rollCountInput.value = settings?.rollCount || String(DEFAULT_ROLL_COUNT);
+  groupCountInput.value = settings?.groupCount ?? "3";
+  rollCountInput.value = settings?.rollCount ?? String(DEFAULT_ROLL_COUNT);
   groupNamesInput.value = settings?.groupNames || "";
   groupCapacitiesInput.value = settings?.groupCapacities || "";
   togetherInput.value = settings?.together || "";
@@ -745,6 +747,7 @@ function toggleMemberLock(member, groupIndex) {
   const groupNames = getGroupNames(lastPlan?.length || 0);
   const wasLocked = lockedAssignments.get(member) === groupIndex;
 
+  scheduleDraftSave();
   if (wasLocked) {
     pushEditHistory();
     lockedAssignments.delete(member);
@@ -881,6 +884,7 @@ function applyProfileConfiguration() {
     profiles[index] = normalizeParticipantProfile({ ...profiles[index], preferences: list(profilePreferencesInput.value), restrictions: list(profileRestrictionsInput.value), requiredRole: profileRequiredRoleInput.value, attributes: parseAttributeEntries(profileAttributesInput.value) });
     participantRecords = profiles;
     renderDraftStats(); renderGroups(lastPlan); refreshResultConsistency();
+    saveDraft();
     setStatus(`${name}의 프로필을 적용했습니다.`, "success");
   } catch (error) { setStatus(error.message, "error"); }
 }
@@ -892,8 +896,39 @@ function applyWeightConfiguration() {
     const roleWeight = Number(roleWeightInput.value);
     if (!Number.isFinite(roleWeight) || roleWeight < 0 || roleWeight > 100) throw new Error("역할 선호 가중치는 0부터 100 사이여야 합니다.");
     balanceWeights = weights; rolePreferenceWeight = roleWeight;
-    renderGroups(lastPlan); refreshResultConsistency(); setStatus("균형 가중치를 적용했습니다.", "success");
+    renderGroups(lastPlan); refreshResultConsistency(); saveDraft(); setStatus("균형 가중치를 적용했습니다.", "success");
   } catch (error) { setStatus(error.message, "error"); }
+}
+
+function saveDraft() {
+  clearTimeout(draftSaveTimer);
+  try {
+    const storage = getStorage();
+    if (!storage) return false;
+    storage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({ version: 2, settings: getDraftSettings(), locks: [...lockedAssignments] }));
+    document.querySelector("#draftState").textContent = "자동 저장됨"; return true;
+  } catch { document.querySelector("#draftState").textContent = "자동 저장 실패"; return false; }
+}
+
+function scheduleDraftSave() {
+  clearTimeout(draftSaveTimer);
+  document.querySelector("#draftState").textContent = "저장 중";
+  draftSaveTimer = setTimeout(saveDraft, 350);
+}
+
+function recoverDraft(raw) {
+  if (!raw || raw.length > 2000000) return false;
+  try {
+    const data = JSON.parse(raw);
+    if (data.version !== 2 || !data.settings || typeof data.settings.groupCount !== "string" || typeof data.settings.rollCount !== "string") return false;
+    const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: { ...data.settings, groupCount: "3", rollCount: "1" } }));
+    settings.groupCount = data.settings.groupCount; settings.rollCount = data.settings.rollCount;
+    const names = getParticipantNames(settings.participants, settings.participantRecords);
+    if (!Array.isArray(data.locks) || data.locks.some((entry) => !Array.isArray(entry) || !names.includes(entry[0]) || !Number.isInteger(entry[1]) || entry[1] < 0 || entry[1] >= Number(settings.groupCount))) return false;
+    restoreSettings(settings); lockedAssignments = new Map(data.locks);
+    document.querySelector("#draftState").textContent = "초안 복구됨";
+    setStatus("자동 저장된 입력을 복구했습니다.", "success"); return true;
+  } catch { return false; }
 }
 
 function persistResultHistory() {
@@ -1404,7 +1439,7 @@ async function generate() {
         : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
       "success",
     );
-    recordResultHistory();
+    recordResultHistory(); saveDraft();
   } catch (error) {
     if (previousResult) restoreResultSnapshot(previousResult);
     else { lastPlan = null; renderGroups(null); }
@@ -1608,6 +1643,9 @@ async function importSettingsJSON(event) {
 }
 
 function reset() {
+  clearTimeout(draftSaveTimer);
+  try { getStorage()?.removeItem(DRAFT_STORAGE_KEY); } catch {}
+  document.querySelector("#draftState").textContent = "";
   resultCandidates = []; selectedCandidateId = null;
   applyDraftSettings(null);
   rulesPanel.open = false;
@@ -1650,9 +1688,12 @@ function clearLockedAssignments() {
 }
 
 function boot() {
+  let draft = null;
+  try { draft = getStorage()?.getItem(DRAFT_STORAGE_KEY); } catch {}
   loadSavedSettings();
   reset();
   loadResultHistory(); renderResultHistory();
+  recoverDraft(draft);
 }
 
 function handleInputKeydown(event) {
@@ -1715,6 +1756,7 @@ getInputFields().forEach((input) => {
       const existing = new Map(participantRecords.map((record) => [record.name, record]));
       participantRecords = uniqueItems(splitParticipants(participantsInput.value)).map((name) => existing.get(name) || normalizeParticipantProfile({ name }));
     }
+    scheduleDraftSave();
     syncTwoStageControls();
     input.removeAttribute("aria-invalid");
     renderDraftStats();
@@ -1726,5 +1768,7 @@ getInputFields().forEach((input) => {
     }
   });
 });
+
+globalThis.addEventListener?.("pagehide", saveDraft);
 
 boot();
