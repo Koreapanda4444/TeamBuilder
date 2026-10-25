@@ -38,6 +38,7 @@ const clearLocksButton = document.querySelector("#clearLocksButton");
 const copyModeSelect = document.querySelector("#copyModeSelect");
 const copyButton = document.querySelector("#copyButton");
 const exportCSVButton = document.querySelector("#exportCSVButton");
+const exportResultJSONButton = document.querySelector("#exportResultJSONButton");
 const statusMessage = document.querySelector("#statusMessage");
 const groupsGrid = document.querySelector("#groupsGrid");
 const emptyState = document.querySelector("#emptyState");
@@ -146,6 +147,7 @@ function refreshResultConsistency() {
   const current = isResultCurrent();
   copyButton.disabled = isGenerating || !current;
   exportCSVButton.disabled = isGenerating || !current;
+  exportResultJSONButton.disabled = isGenerating || !current;
   setResultState(current ? "완료" : "재생성 필요", current ? "ready" : "error");
 }
 
@@ -649,6 +651,7 @@ function updateUndoButtonState() {
   undoEditButton.disabled = isGenerating || !isResultCurrent() || editHistory.length === 0;
   redoEditButton.disabled = isGenerating || !isResultCurrent() || redoHistory.length === 0;
   exportCSVButton.disabled = isGenerating || !isResultCurrent();
+  exportResultJSONButton.disabled = isGenerating || !isResultCurrent();
   copyButton.disabled = isGenerating || !isResultCurrent();
 }
 
@@ -1500,7 +1503,20 @@ function encodeCSVCell(value) {
   return /[",\r\n]/u.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-function buildResultCSV(plan, groupNames, roleAssignments = null) {
+function buildResultCSV(plan, groupNames, roleAssignments = null, options = null) {
+  if (options) {
+    const profiles = new Map((options.profiles || []).map((profile) => [profile.name, profile]));
+    const dimensions = [...new Set((options.profiles || []).flatMap((profile) => Object.keys(profile.attributes || {})))].sort();
+    const rows = [["group", "role", "name", ...dimensions.map((key) => `attr:${key}`), "preferences", "restrictions", "requiredRole", "locked", "seed", "quality"]];
+    plan.forEach((group, index) => {
+      const roles = new Map((roleAssignments?.[index] || []).map((entry) => [entry.member, entry.role]));
+      group.forEach((member) => {
+        const profile = profiles.get(member);
+        rows.push([groupNames[index], roles.get(member) || "", member, ...dimensions.map((key) => profile?.attributes?.[key] ?? ""), (profile?.preferences || []).join("|"), (profile?.restrictions || []).join("|"), profile?.requiredRole || "", options.locks?.has(member) ? "true" : "false", options.seed || "", options.quality?.total?.toFixed(2) || ""]);
+      });
+    });
+    return rows.map((row) => row.map(encodeCSVCell).join(",")).join("\r\n") + "\r\n";
+  }
   const rows = [roleAssignments ? ["group", "role", "name"] : ["group", "name"]];
   plan.forEach((group, index) => {
     const roleByMember = new Map((roleAssignments?.[index] || []).map((entry) => [entry.member, entry.role]));
@@ -1536,9 +1552,21 @@ function exportResultCSV() {
   if (!canUseResult()) {
     return;
   }
-  const csv = buildResultCSV(lastPlan, getGroupNames(lastPlan.length), lastRoleAssignments);
+  const csv = buildResultCSV(lastPlan, getGroupNames(lastPlan.length), lastRoleAssignments, { profiles: getInputs().profiles, seed: seedInput.value, locks: lockedAssignments, quality: lastQuality });
   downloadText("TeamBuilder-result.csv", "\uFEFF" + csv, "text/csv;charset=utf-8");
   setStatus("CSV 결과를 내보냈습니다.", "success");
+}
+
+function buildResultJSON() {
+  const input = getInputs(), names = getGroupNames(lastPlan.length);
+  const profiles = new Map(input.profiles.map((profile) => [profile.name, profile]));
+  return JSON.stringify({ app: "TeamBuilder", version: 2, type: "result", settings: getDraftSettings(), seed: input.seed, quality: lastQuality, candidates: resultCandidates, distributions: getAttributeDistributions(lastPlan, input.profiles), groups: lastPlan.map((group, index) => ({ name: names[index], members: group.map((member) => ({ ...profiles.get(member), role: lastRoleAssignments?.[index]?.find((entry) => entry.member === member)?.role || "", locked: lockedAssignments.has(member) })) })) }, null, 2);
+}
+
+function exportResultJSON() {
+  if (!canUseResult()) return;
+  downloadText("TeamBuilder-result.json", buildResultJSON(), "application/json;charset=utf-8");
+  setStatus("JSON 결과를 내보냈습니다.", "success");
 }
 
 async function copyResult() {
@@ -1753,6 +1781,7 @@ weightsApplyButton.addEventListener("click", applyWeightConfiguration);
 clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
 exportCSVButton.addEventListener("click", exportResultCSV);
+exportResultJSONButton.addEventListener("click", exportResultJSON);
 saveSettingsButton.addEventListener("click", saveCurrentSettings);
 updateSettingsButton.addEventListener("click", updateCurrentSavedSetting);
 [participantsInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {
