@@ -42,6 +42,7 @@ let participantRecords = null;
 let lastPlan = null;
 let lastRoleAssignments = null;
 let lastCapacities = null;
+let resultInputSignature = null;
 let lastAudit = [];
 let savedSettings = [];
 let activeSavedSettingId = null;
@@ -153,7 +154,7 @@ function applyParticipantRecords(records) {
   participantRecords = records.map((record) => ({ ...record }));
   participantsInput.value = records.map((record) => record.name).join("\n");
   renderDraftStats();
-  if (lastPlan) setResultState("수정됨");
+  refreshResultConsistency();
 }
 
 async function importParticipantCSV(event) {
@@ -225,6 +226,20 @@ function setResultState(text, type = "default") {
   resultState.textContent = text;
   resultState.classList.toggle("is-ready", type === "ready");
   resultState.classList.toggle("is-error", type === "error");
+}
+
+function getInputSignature() {
+  return JSON.stringify(getDraftSettings());
+}
+
+function isResultCurrent() {
+  return Boolean(lastPlan && resultInputSignature === getInputSignature());
+}
+
+function refreshResultConsistency() {
+  if (!lastPlan) return;
+  const current = isResultCurrent();
+  setResultState(current ? "완료" : "재생성 필요", current ? "ready" : "error");
 }
 
 function setGenerateBusy(active) {
@@ -1801,6 +1816,7 @@ async function generate() {
     lastPlan = result.plan;
     lastRoleAssignments = input.twoStage ? assignRolesToPlan(result.plan, input.roles) : null;
     lastCapacities = input.capacities ? [...input.capacities] : null;
+    resultInputSignature = getInputSignature();
     lastAudit = result.audit;
     clearFieldValidity();
     clearEditHistory();
@@ -2097,7 +2113,7 @@ getInputFields().forEach((input) => {
       if (input === groupNamesInput) {
         renderGroups(lastPlan);
       }
-      setResultState("수정됨");
+      refreshResultConsistency();
     }
   });
 });
