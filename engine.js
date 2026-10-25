@@ -789,6 +789,10 @@ function* capacityLayouts(total, groupCount, capacities) {
 
 function buildPlan(input, options = {}) {
   if (input.errors?.length) return { status: "invalid", error: input.errors[0], audit: input.errors.map((detail) => ({ type: "error", title: "입력 오류", detail })) };
+  const roleErrors = validateRoleConfiguration(input);
+  if (roleErrors.length) return { status: "invalid", error: roleErrors[0], audit: roleErrors.map((detail) => ({ type: "error", title: "역할 설정 오류", detail })) };
+  const roleFeasibility = validateRoleFeasibility(input);
+  if (roleFeasibility.length) return { status: "impossible", error: roleFeasibility[0], audit: roleFeasibility.map((detail) => ({ type: "error", title: "역할 충돌", detail })) };
   const search = { nodes: 0, operations: 0, start: performance.now(), lastProgress: 0, maxMs: input.maxMs ?? 3000, maxOperations: input.maxOperations ?? 1000000, onProgress: options.onProgress };
   if (!Number.isFinite(search.maxMs) || search.maxMs <= 0 || !Number.isSafeInteger(search.maxOperations) || search.maxOperations <= 0) return { status: "invalid", error: "탐색 제한을 확인하세요.", audit: [{ type: "error", title: "입력 확인", detail: "탐색 제한을 확인하세요." }] };
   try {
@@ -895,6 +899,42 @@ function searchPlan(input, search) {
       },
     ],
   };
+}
+
+function findRoleMatching(members, input, copies = 1, partial = false) {
+  const profiles = new Map((input.profiles || []).map((profile) => [profile.name, profile]));
+  const required = new Set(input.requiredRoles || input.roles);
+  const slots = input.roles.flatMap((role) => Array.from({ length: copies }, () => ({ role, required: required.has(role) })));
+  if (members.length > slots.length) return null;
+  const nodes = members.map((member) => ({ member, choices: slots.flatMap((slot, index) => canAssignRole(profiles.get(member), slot.role) ? [index] : []) }));
+  if (!partial) for (let index = members.length; index < slots.length; index += 1) nodes.push({ member: null, choices: slots.flatMap((slot, slotIndex) => slot.required ? [] : [slotIndex]) });
+  nodes.sort((a, b) => a.choices.length - b.choices.length);
+  const owner = new Map();
+  function augment(nodeIndex, seen) {
+    for (const slot of nodes[nodeIndex].choices) {
+      if (seen.has(slot)) continue;
+      seen.add(slot);
+      if (!owner.has(slot) || augment(owner.get(slot), seen)) { owner.set(slot, nodeIndex); return true; }
+    }
+    return false;
+  }
+  for (let index = 0; index < nodes.length; index += 1) if (!augment(index, new Set())) return null;
+  return [...owner].sort(([a], [b]) => a - b).flatMap(([slot, node]) => nodes[node].member === null ? [] : [{ member: nodes[node].member, role: slots[slot].role }]);
+}
+
+function validateRoleConfiguration(input) {
+  if (!input.twoStage) return [];
+  const errors = [];
+  for (const profile of input.profiles || []) {
+    if ([...(profile.preferences || []), ...(profile.restrictions || []), ...(profile.requiredRole ? [profile.requiredRole] : [])].some((role) => !input.roles.includes(role))) errors.push(`${profile.name}의 역할 설정에 없는 역할이 있습니다.`);
+    if (profile.requiredRole && profile.restrictions?.includes(profile.requiredRole)) errors.push(`${profile.name}의 필수 역할이 금지되어 있습니다.`);
+  }
+  return errors;
+}
+
+function validateRoleFeasibility(input) {
+  if (!input.twoStage) return [];
+  return findRoleMatching(input.participants, input, input.groupCount) ? [] : ["역할 제한 때문에 필수 역할과 참가자를 모두 배정할 수 없습니다."];
 }
 
 function canAssignRole(profile, role) {
