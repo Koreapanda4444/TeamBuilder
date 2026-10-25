@@ -531,6 +531,21 @@ function validatePreflight(input, components, fixedTargets, maxTargetSize) {
     }
   });
 
+  for (const [left, right] of createSeparatedComponentPairs(components, input.separateRules).pairs) {
+    if (fixedTargets.has(left) && fixedTargets.get(left) === fixedTargets.get(right)) errors.push("분리할 참가자가 같은 그룹에 고정되어 있습니다.");
+  }
+  const base = Math.floor(input.participants.length / input.groupCount);
+  const extra = input.participants.length % input.groupCount;
+  if (!input.capacities && fixedSizeByGroup.filter((size) => size > base).length > extra) errors.push("큰 정원이 필요한 고정 그룹이 너무 많습니다.");
+  const free = components.filter((component) => !fixedTargets.has(component.id));
+  if (input.participants.length <= 2000) {
+    let reachable = 1n;
+    for (const component of free) reachable |= reachable << BigInt(component.size);
+    fixedSizeByGroup.forEach((size, index) => {
+      const targets = input.capacities ? [input.capacities[index]] : [...new Set([base, maxTargetSize])];
+      if (!targets.some((target) => target >= size && ((reachable >> BigInt(target - size)) & 1n))) errors.push(`${index + 1}그룹의 정원을 함께 배정 묶음으로 채울 수 없습니다.`);
+    });
+  }
   if (!errors.length) {
     return null;
   }
