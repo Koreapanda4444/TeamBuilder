@@ -18,6 +18,7 @@ const exportJSONButton = document.querySelector("#exportJSONButton");
 const settingsJSONFile = document.querySelector("#settingsJSONFile");
 const rulesPanel = document.querySelector("#rulesPanel");
 const undoEditButton = document.querySelector("#undoEditButton");
+const redoEditButton = document.querySelector("#redoEditButton");
 const clearLocksButton = document.querySelector("#clearLocksButton");
 const copyModeSelect = document.querySelector("#copyModeSelect");
 const copyButton = document.querySelector("#copyButton");
@@ -48,6 +49,7 @@ let savedSettings = [];
 let activeSavedSettingId = null;
 let lockedAssignments = new Map();
 let editHistory = [];
+let redoHistory = [];
 let isGenerating = false;
 const DEFAULT_ATTEMPTS = 1800;
 const DEFAULT_ROLL_COUNT = 1;
@@ -1274,6 +1276,8 @@ function createResultSnapshot() {
   }
 
   return {
+    signature: resultInputSignature,
+    audit: structuredClone(lastAudit),
     plan: clonePlan(lastPlan),
     roleAssignments: cloneRoleAssignments(lastRoleAssignments),
     capacities: lastCapacities ? [...lastCapacities] : null,
@@ -1282,13 +1286,15 @@ function createResultSnapshot() {
 }
 
 function updateUndoButtonState() {
-  undoEditButton.disabled = isGenerating || !lastPlan || editHistory.length === 0;
+  undoEditButton.disabled = isGenerating || !isResultCurrent() || editHistory.length === 0;
+  redoEditButton.disabled = isGenerating || !isResultCurrent() || redoHistory.length === 0;
   exportCSVButton.disabled = isGenerating || !isResultCurrent();
   copyButton.disabled = isGenerating || !isResultCurrent();
 }
 
 function clearEditHistory() {
   editHistory = [];
+  redoHistory = [];
   updateUndoButtonState();
 }
 
@@ -1299,6 +1305,7 @@ function pushEditHistory() {
     return;
   }
 
+  redoHistory = [];
   editHistory.push(snapshot);
 
   if (editHistory.length > MAX_EDIT_HISTORY) {
@@ -1308,31 +1315,31 @@ function pushEditHistory() {
   updateUndoButtonState();
 }
 
-function undoLastEdit() {
-  const snapshot = editHistory.pop();
-
-  if (!snapshot) {
-    setStatus("되돌릴 수정이 없습니다.", "error");
-    updateUndoButtonState();
-    return;
-  }
-
+function restoreResultSnapshot(snapshot) {
   lastPlan = clonePlan(snapshot.plan);
   lastRoleAssignments = cloneRoleAssignments(snapshot.roleAssignments);
   lastCapacities = snapshot.capacities ? [...snapshot.capacities] : null;
   lockedAssignments = new Map(snapshot.locks);
+  resultInputSignature = snapshot.signature;
+  lastAudit = structuredClone(snapshot.audit || []);
   renderGroups(lastPlan);
-  refreshAuditForCurrentPlan([
-    {
-      type: "warning",
-      title: "되돌리기",
-      detail: "직전 결과 수정을 되돌렸습니다.",
-    },
-  ]);
-  setResultState("수정됨");
-  setStatus("직전 결과 수정을 되돌렸습니다.", "success");
+  refreshAuditForCurrentPlan();
+  refreshResultConsistency();
   updateUndoButtonState();
 }
+
+function travelEditHistory(from, to) {
+  if (isGenerating || !isResultCurrent() || !from.length) return false;
+  to.push(createResultSnapshot());
+  if (to.length > MAX_EDIT_HISTORY) to.shift();
+  restoreResultSnapshot(from.pop());
+  setStatus("결과 수정 상태를 복원했습니다.", "success");
+  return true;
+}
+
+function redoLastEdit() { return travelEditHistory(redoHistory, editHistory); }
+
+function undoLastEdit() { return travelEditHistory(editHistory, redoHistory); }
 
 function refreshAuditForCurrentPlan(extraItems = []) {
   if (!lastPlan) {
@@ -2142,6 +2149,7 @@ twoStageInput.addEventListener("change", syncTwoStageControls);
 generateButton.addEventListener("click", generate);
 resetButton.addEventListener("click", () => reset());
 undoEditButton.addEventListener("click", undoLastEdit);
+redoEditButton.addEventListener("click", redoLastEdit);
 clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
 exportCSVButton.addEventListener("click", exportResultCSV);
