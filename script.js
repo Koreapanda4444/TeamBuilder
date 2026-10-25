@@ -76,7 +76,7 @@ function getParticipantNames(value = participantsInput.value, records = particip
 }
 
 function applyParticipantRecords(records) {
-  participantRecords = records.map((record) => ({ ...record }));
+  participantRecords = records.map(normalizeParticipantProfile);
   participantsInput.value = records.map((record) => record.name).join("\n");
   renderDraftStats();
   refreshResultConsistency();
@@ -246,7 +246,7 @@ function getDraftSettings() {
     maxOperations: searchOperationsInput.value,
     seed: seedInput.value,
     participants: participantsInput.value,
-    participantRecords: participantRecords ? participantRecords.map((record) => ({ ...record })) : null,
+    participantRecords: participantRecords ? participantRecords.map(normalizeParticipantProfile) : null,
     groupCount: groupCountInput.value,
     rollCount: rollCountInput.value,
     groupNames: groupNamesInput.value,
@@ -265,7 +265,7 @@ function applyDraftSettings(settings) {
   searchTimeInput.value = settings?.maxMs || "3000";
   searchOperationsInput.value = settings?.maxOperations || "1000000";
   participantsInput.value = settings?.participants || "";
-  participantRecords = Array.isArray(settings?.participantRecords) ? settings.participantRecords : null;
+  participantRecords = Array.isArray(settings?.participantRecords) ? settings.participantRecords.map(normalizeParticipantProfile) : null;
   groupCountInput.value = settings?.groupCount || "3";
   rollCountInput.value = settings?.rollCount || String(DEFAULT_ROLL_COUNT);
   groupNamesInput.value = settings?.groupNames || "";
@@ -405,6 +405,7 @@ function getInputs() {
     separateRules: separate.rules,
     fixedRules: fixed.rules,
     attributeRules: attributes.rules,
+    profiles: createParticipantProfiles(participants, participantRecords, attributes.rules),
     duplicateCount,
     errors,
   };
@@ -1360,8 +1361,8 @@ function parseSettingsJSON(text) {
       throw new Error("JSON 참가자 정보의 형식을 확인하세요.");
     }
     if (source.participantRecords.some((record) => Array.isArray(record) || /[\u0000-\u001f\u007f]/u.test(record.name)) || duplicateItems(source.participantRecords.map((record) => record.name.trim())).length) throw new Error("JSON 참가자 이름을 확인하세요.");
-    settings.participantRecords = source.participantRecords.map((record) => ({ name: record.name, role: record.role || "" }));
-    if (settings.participants !== settings.participantRecords.map((record) => record.name).join("\n")) {
+    settings.participantRecords = source.participantRecords.map(normalizeParticipantProfile);
+    if (JSON.stringify(getParticipantNames(settings.participants, settings.participantRecords)) !== JSON.stringify(settings.participantRecords.map((record) => record.name))) {
       throw new Error("JSON 참가자 정보와 명단이 일치하지 않습니다.");
     }
   }
@@ -1507,7 +1508,10 @@ rollCountInput.addEventListener("keydown", handleSingleLineKeydown);
 savedSettingsNameInput.addEventListener("keydown", handleSavedNameKeydown);
 getInputFields().forEach((input) => {
   input.addEventListener("input", () => {
-    if (input === participantsInput) participantRecords = null;
+    if (input === participantsInput && participantRecords) {
+      const existing = new Map(participantRecords.map((record) => [record.name, record]));
+      participantRecords = uniqueItems(splitParticipants(participantsInput.value)).map((name) => existing.get(name) || normalizeParticipantProfile({ name }));
+    }
     syncTwoStageControls();
     input.removeAttribute("aria-invalid");
     renderDraftStats();

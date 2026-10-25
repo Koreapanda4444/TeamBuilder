@@ -1,3 +1,19 @@
+function normalizeParticipantProfile(record) {
+  if (!record || Array.isArray(record) || typeof record.name !== "string" || !record.name.trim() || /[\u0000-\u001f\u007f]/u.test(record.name)) throw new Error("참가자 프로필 이름을 확인하세요.");
+  if (record.role !== undefined && typeof record.role !== "string") throw new Error("참가자 역할 형식을 확인하세요.");
+  const attributes = record.attributes ?? {};
+  if (!attributes || typeof attributes !== "object" || Array.isArray(attributes) || Object.entries(attributes).some(([key, value]) => !key.trim() || ["__proto__", "constructor", "prototype"].includes(key) || (typeof value !== "string" && !(typeof value === "number" && Number.isFinite(value))))) throw new Error("참가자 속성 형식을 확인하세요.");
+  return { name: record.name.trim(), role: record.role || "", attributes: { ...attributes } };
+}
+
+function createParticipantProfiles(names, records = [], attributeRules = []) {
+  const byName = new Map((records || []).map((record) => [record.name, normalizeParticipantProfile(record)]));
+  const profiles = names.map((name) => byName.get(name) || normalizeParticipantProfile({ name }));
+  const profilesByName = new Map(profiles.map((profile) => [profile.name, profile]));
+  attributeRules.forEach(({ member, value }) => { if (profilesByName.has(member)) profilesByName.get(member).attributes.attribute = value; });
+  return profiles;
+}
+
 let engineRandom = Math.random;
 
 function createSeededRandom(seed) {
