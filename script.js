@@ -82,7 +82,8 @@ const DEFAULT_ATTEMPTS = 1800;
 const DEFAULT_ROLL_COUNT = 1;
 const MAX_ROLL_COUNT = 30;
 const MAX_EDIT_HISTORY = 20;
-const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
+const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v2";
+const LEGACY_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
 
 
 
@@ -328,7 +329,7 @@ function loadSavedSettings() {
   }
 
   try {
-    const raw = storage.getItem(SAVED_SETTINGS_STORAGE_KEY);
+    const raw = storage.getItem(SAVED_SETTINGS_STORAGE_KEY) || storage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
     const parsed = raw ? JSON.parse(raw) : [];
     savedSettings = Array.isArray(parsed) ? parsed.flatMap((item) => {
       try {
@@ -921,8 +922,9 @@ function recoverDraft(raw) {
   try {
     const data = JSON.parse(raw);
     if (data.version !== 2 || !data.settings || typeof data.settings.groupCount !== "string" || typeof data.settings.rollCount !== "string") return false;
-    const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: { ...data.settings, groupCount: "3", rollCount: "1" } }));
+    const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: { ...data.settings, groupCount: "3", rollCount: "1", maxMs: "3000", maxOperations: "1000000", locks: [] } }));
     settings.groupCount = data.settings.groupCount; settings.rollCount = data.settings.rollCount;
+    for (const key of ["maxMs", "maxOperations"]) if (typeof data.settings[key] === "string") settings[key] = data.settings[key];
     const names = getParticipantNames(settings.participants, settings.participantRecords);
     if (!Array.isArray(data.locks) || data.locks.some((entry) => !Array.isArray(entry) || !names.includes(entry[0]) || !Number.isInteger(entry[1]) || entry[1] < 0 || entry[1] >= Number(settings.groupCount))) return false;
     restoreSettings(settings); lockedAssignments = new Map(data.locks);
@@ -1225,7 +1227,7 @@ function loadSavedSetting(item) {
   lastQuality = null;
   clearFieldValidity();
   rulesPanel.open = false;
-  lockedAssignments = new Map();
+  lockedAssignments = new Map(item.settings.locks || []);
   clearEditHistory();
   renderDraftStats();
   renderGroups(null);
@@ -1556,19 +1558,19 @@ async function copyResult() {
 }
 
 function buildSettingsJSON(settings = getDraftSettings()) {
-  return JSON.stringify({ app: "TeamBuilder", version: 1, settings }, null, 2);
+  return JSON.stringify({ app: "TeamBuilder", version: 2, settings, locks: [...lockedAssignments] }, null, 2);
 }
 
 function parseSettingsJSON(text) {
   if (typeof text !== "string" || text.length > 2000000) throw new Error("설정 파일이 너무 큽니다.");
   const data = JSON.parse(text.replace(/^\uFEFF/u, ""));
-  if (!data || typeof data !== "object" || Array.isArray(data) || data.app !== "TeamBuilder" || data.version !== 1) {
+  if (!data || typeof data !== "object" || Array.isArray(data) || data.app !== "TeamBuilder" || ![1, 2].includes(data.version)) {
     throw new Error("지원하는 TeamBuilder 설정 JSON이 아닙니다.");
   }
   const source = data.settings;
   if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("JSON 설정 형식을 확인하세요.");
   const settings = {};
-  const textFields = ["maxMs", "maxOperations", "seed", "participants", "groupNames", "groupCapacities", "together", "separate", "fixed", "attributes", "roles"];
+  const textFields = ["seed", "participants", "groupNames", "groupCapacities", "together", "separate", "fixed", "attributes", "roles"];
   for (const key of textFields) {
     if (source[key] !== undefined && typeof source[key] !== "string") throw new Error("JSON 설정 입력값의 형식을 확인하세요.");
     settings[key] = source[key] || "";
@@ -1580,6 +1582,12 @@ function parseSettingsJSON(text) {
     settings[key] = source[key] === undefined ? fallback : String(source[key]);
   }
   if (!/^\d+$/u.test(settings.groupCount) || Number(settings.groupCount) < 2 || Number(settings.groupCount) > 24 || !/^\d+$/u.test(settings.rollCount) || Number(settings.rollCount) < 1 || Number(settings.rollCount) > MAX_ROLL_COUNT) throw new Error("JSON 그룹 수 또는 돌리기 범위를 확인하세요.");
+  for (const [key, fallback, min, max] of [["maxMs", "3000", 50, 30000], ["maxOperations", "1000000", 100, 10000000]]) {
+    const value = source[key] ?? fallback;
+    if ((typeof value !== "string" && typeof value !== "number") || !/^\d+$/u.test(String(value)) || !Number.isSafeInteger(Number(value)) || Number(value) < min || Number(value) > max) throw new Error("JSON 탐색 제한을 확인하세요.");
+    settings[key] = String(value);
+  }
+  if (settings.seed.length > 256) throw new Error("시드는 256자 이하여야 합니다.");
   if (source.twoStage !== undefined && typeof source.twoStage !== "boolean") throw new Error("JSON 2단계 배정 설정의 형식을 확인하세요.");
   settings.twoStage = source.twoStage === true;
   settings.balanceWeights = normalizeBalanceWeights(source.balanceWeights ?? {});
@@ -1596,6 +1604,10 @@ function parseSettingsJSON(text) {
       throw new Error("JSON 참가자 정보와 명단이 일치하지 않습니다.");
     }
   }
+  const locks = data.locks ?? source.locks ?? [];
+  const names = getParticipantNames(settings.participants, settings.participantRecords);
+  if (!Array.isArray(locks) || locks.some((entry) => !Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string" || !names.includes(entry[0]) || !Number.isInteger(entry[1]) || entry[1] < 0 || entry[1] >= Number(settings.groupCount)) || new Set(locks.map(([member]) => member)).size !== locks.length) throw new Error("JSON 고정 정보를 확인하세요.");
+  settings.locks = locks.map((entry) => [...entry]);
   return settings;
 }
 
@@ -1609,7 +1621,7 @@ function restoreSettings(settings) {
   lastCapacities = null;
   lastQuality = null;
   lastAudit = [];
-  lockedAssignments = new Map();
+  lockedAssignments = new Map(settings.locks || []);
   clearEditHistory();
   clearFieldValidity();
   rulesPanel.open = false;
