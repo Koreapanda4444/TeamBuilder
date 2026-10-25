@@ -52,6 +52,7 @@ let lastRoleAssignments = null;
 let lastCapacities = null;
 let resultInputSignature = null;
 let lastAudit = [];
+let lastQuality = null;
 let savedSettings = [];
 let activeSavedSettingId = null;
 let lockedAssignments = new Map();
@@ -597,6 +598,7 @@ function createResultSnapshot() {
   }
 
   return {
+    quality: lastQuality ? { ...lastQuality } : null,
     signature: resultInputSignature,
     audit: structuredClone(lastAudit),
     plan: clonePlan(lastPlan),
@@ -642,6 +644,7 @@ function restoreResultSnapshot(snapshot) {
   lastCapacities = snapshot.capacities ? [...snapshot.capacities] : null;
   lockedAssignments = new Map(snapshot.locks);
   resultInputSignature = snapshot.signature;
+  lastQuality = snapshot.quality ? { ...snapshot.quality } : null;
   lastAudit = structuredClone(snapshot.audit || []);
   renderGroups(lastPlan);
   refreshAuditForCurrentPlan();
@@ -750,6 +753,7 @@ function applyManualPlan(plan, roles = lastRoleAssignments) {
   pushEditHistory();
   lastPlan = plan;
   lastRoleAssignments = roles;
+  lastQuality = scoreAssignment(plan, input, roles);
   renderGroups(lastPlan);
   refreshAuditForCurrentPlan();
   refreshResultConsistency();
@@ -1016,6 +1020,7 @@ function loadSavedSetting(item) {
   lastPlan = null;
   lastRoleAssignments = null;
   lastCapacities = null;
+  lastQuality = null;
   clearFieldValidity();
   rulesPanel.open = false;
   lockedAssignments = new Map();
@@ -1141,6 +1146,7 @@ async function generate() {
       lastPlan = null;
       lastRoleAssignments = null;
       lastCapacities = null;
+  lastQuality = null;
       lastAudit = [];
       markInvalidFields(input.errors);
       clearEditHistory();
@@ -1190,6 +1196,7 @@ async function generate() {
       lastPlan = null;
       lastRoleAssignments = null;
       lastCapacities = null;
+  lastQuality = null;
       lastAudit = result.audit;
       markInvalidFields([result.error]);
       clearEditHistory();
@@ -1213,6 +1220,7 @@ async function generate() {
     }
     lastPlan = result.plan;
     lastRoleAssignments = assignedRoles;
+    lastQuality = result.quality || scoreAssignment(lastPlan, input, lastRoleAssignments);
     lastCapacities = input.capacities ? [...input.capacities] : null;
     resultInputSignature = getInputSignature();
     lastAudit = result.audit;
@@ -1393,6 +1401,7 @@ function restoreSettings(settings) {
   lastPlan = null;
   lastRoleAssignments = null;
   lastCapacities = null;
+  lastQuality = null;
   lastAudit = [];
   lockedAssignments = new Map();
   clearEditHistory();
@@ -1434,6 +1443,7 @@ function reset() {
   lastPlan = null;
   lastRoleAssignments = null;
   lastCapacities = null;
+  lastQuality = null;
   lastAudit = [];
   activeSavedSettingId = null;
   lockedAssignments = new Map();

@@ -797,10 +797,10 @@ function buildPlan(input, options = {}) {
   if (!Number.isFinite(search.maxMs) || search.maxMs <= 0 || !Number.isSafeInteger(search.maxOperations) || search.maxOperations <= 0) return { status: "invalid", error: "탐색 제한을 확인하세요.", audit: [{ type: "error", title: "입력 확인", detail: "탐색 제한을 확인하세요." }] };
   try {
     const result = searchPlan(input, search);
-    return { ...result, status: result.status || (result.error ? "impossible" : "success"), search: { nodes: search.nodes, operations: search.operations } };
+    return { ...result, quality: result.plan ? scoreAssignment(result.plan, input, result.roleAssignments) : null, status: result.status || (result.error ? "impossible" : "success"), search: { nodes: search.nodes, operations: search.operations } };
   } catch (error) {
     if (!(error instanceof SearchLimitError)) throw error;
-    if (search.bestResult) return { ...search.bestResult, status: "success", searchLimited: true, search: { nodes: search.nodes, operations: search.operations } };
+    if (search.bestResult) return { ...search.bestResult, quality: scoreAssignment(search.bestResult.plan, input, search.bestResult.roleAssignments), status: "success", searchLimited: true, search: { nodes: search.nodes, operations: search.operations } };
     return { status: "limit", error: error.message, audit: [{ type: "warning", title: "탐색 한계", detail: error.message }], search: { nodes: search.nodes, operations: search.operations } };
   }
 }
@@ -1002,6 +1002,14 @@ function canAssignRole(profile, role) {
 function assignRolesToPlan(plan, roles) {
   if (plan.some((group) => group.length > roles.length)) throw new Error("그룹 인원과 역할 수가 같아야 합니다.");
   return plan.map((group) => shuffle(group).map((member, index) => ({ member, role: roles[index] || "" })));
+}
+
+function scoreAssignment(plan, input, roleAssignments = null) {
+  const violations = validateAssignmentResult(plan, input, roleAssignments);
+  if (violations.length) return { valid: false, balance: 0, role: 0, total: 0, violations };
+  const balancePenalty = getAttributeBalanceScore(plan, input.attributeRules, input.profiles, input.balanceWeights);
+  const rolePenalty = getRolePreferencePenalty(roleAssignments, input.profiles);
+  return { valid: true, balance: 100 / (1 + balancePenalty), role: 100 * (1 - rolePenalty), total: 100 / (1 + balancePenalty + rolePenalty * (input.rolePreferenceWeight ?? 1)), violations: [] };
 }
 
 function validateAssignmentResult(plan, input, roleAssignments = null, checkRoles = true) {
