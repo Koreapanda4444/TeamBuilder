@@ -1400,67 +1400,63 @@ function toggleMemberLock(member, groupIndex) {
   setStatus(wasLocked ? `${member}의 고정을 해제했습니다.` : `${member}를 고정했습니다.`, "success");
 }
 
-function moveMember(member, fromGroupIndex, toGroupIndex) {
-  if (!lastPlan || fromGroupIndex === toGroupIndex) {
-    renderGroups(lastPlan);
-    return;
-  }
+function validateManualPlan(plan, roleAssignments) {
+  const input = getInputs();
+  const rules = [...input.fixedRules, ...[...lockedAssignments].map(([member, groupIndex]) => ({ member, groupIndex }))];
+  const errors = [...input.errors];
+  const members = plan.flat();
+  if (plan.length !== input.groupCount || members.length !== input.participants.length || new Set(members).size !== members.length || input.participants.some((member) => !members.includes(member))) errors.push("참가자 누락 또는 중복입니다.");
+  plan.forEach((group, index) => {
+    const min = input.capacities?.[index] ?? Math.floor(members.length / input.groupCount);
+    const max = input.capacities?.[index] ?? Math.ceil(members.length / input.groupCount);
+    if (group.length < min || group.length > max) errors.push("그룹 정원을 지켜야 합니다.");
+    if (input.twoStage && (!roleAssignments?.[index] || roleAssignments[index].length !== group.length || new Set(roleAssignments[index].map((entry) => entry.role)).size !== input.roles.length || group.some((member) => !roleAssignments[index].some((entry) => entry.member === member && input.roles.includes(entry.role))))) errors.push("역할 배정을 확인하세요.");
+  });
+  errors.push(...validatePlan(plan, input.togetherRules, input.separateRules, rules, input.attributeRules).filter((item) => item.type === "error").map((item) => item.detail));
+  return errors;
+}
 
-  if (isGenerating || !isResultCurrent() || isMemberProtected(member)) {
-    setStatus("고정 또는 변경된 조건을 확인한 뒤 다시 생성하세요.", "error");
+function applyManualPlan(plan, roles = lastRoleAssignments) {
+  const errors = validateManualPlan(plan, roles);
+  if (errors.length) {
+    setStatus(errors[0], "error");
     renderGroups(lastPlan);
-    return;
-  }
-  const source = lastPlan[fromGroupIndex];
-  const target = lastPlan[toGroupIndex];
-
-  if (!source || !target) {
-    renderGroups(lastPlan);
-    return;
-  }
-
-  const memberIndex = source.indexOf(member);
-
-  if (memberIndex === -1) {
-    renderGroups(lastPlan);
-    return;
-  }
-
-  const keepCapacities = Boolean(lastRoleAssignments || lastCapacities);
-  const swapMember = keepCapacities ? target.find((name) => !isMemberProtected(name)) : null;
-  if (keepCapacities && !swapMember) {
-    renderAudit([{ type: "error", title: "이동 확인", detail: "대상 그룹의 고정을 해제한 뒤 다시 이동하세요." }]);
-    setStatus("입력을 확인한 뒤 다시 시도하세요.", "error");
-    renderGroups(lastPlan);
-    return;
+    return false;
   }
   pushEditHistory();
-  if (keepCapacities) {
-    source[memberIndex] = swapMember;
+  lastPlan = plan;
+  lastRoleAssignments = roles;
+  renderGroups(lastPlan);
+  refreshAuditForCurrentPlan();
+  refreshResultConsistency();
+  setStatus("조건을 확인하고 결과를 변경했습니다.", "success");
+  return true;
+}
+
+function moveMember(member, fromGroupIndex, toGroupIndex) {
+  if (isGenerating || !isResultCurrent() || isMemberProtected(member) || fromGroupIndex === toGroupIndex) { renderGroups(lastPlan); return false; }
+  const plan = clonePlan(lastPlan);
+  const source = plan[fromGroupIndex];
+  const target = plan[toGroupIndex];
+  if (!source?.includes(member) || !target) { renderGroups(lastPlan); return false; }
+  const roles = cloneRoleAssignments(lastRoleAssignments);
+  const swapMember = (lastCapacities || roles) ? target.find((name) => !isMemberProtected(name)) : null;
+  if ((lastCapacities || roles) && !swapMember) { renderGroups(lastPlan); return false; }
+  if (swapMember) {
+    source[source.indexOf(member)] = swapMember;
     target[target.indexOf(swapMember)] = member;
-    if (lastRoleAssignments) {
-      lastRoleAssignments[fromGroupIndex].find((entry) => entry.member === member).member = swapMember;
-      lastRoleAssignments[toGroupIndex].find((entry) => entry.member === swapMember).member = member;
+    if (roles) {
+      roles[fromGroupIndex].find((entry) => entry.member === member).member = swapMember;
+      roles[toGroupIndex].find((entry) => entry.member === swapMember).member = member;
     }
   } else {
-    source.splice(memberIndex, 1);
+    source.splice(source.indexOf(member), 1);
     target.push(member);
   }
+  if (!applyManualPlan(plan, roles)) return false;
   lockedAssignments.set(member, toGroupIndex);
-
-  const groupNames = getGroupNames(lastPlan.length);
-
   renderGroups(lastPlan);
-  refreshAuditForCurrentPlan([
-    {
-      type: "warning",
-      title: "직접 수정",
-      detail: `${member} → ${groupNames[toGroupIndex]}`,
-      hint: "다음 생성에도 유지되도록 고정했습니다.",
-    },
-  ]);
-  setResultState("수정됨");
-  setStatus(`${member}를 ${groupNames[toGroupIndex]}으로 옮겼습니다.`, "success");
+  return true;
 }
 
 function renderGroups(plan, roleAssignments = lastRoleAssignments) {
