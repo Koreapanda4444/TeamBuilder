@@ -239,6 +239,8 @@ function isResultCurrent() {
 function refreshResultConsistency() {
   if (!lastPlan) return;
   const current = isResultCurrent();
+  copyButton.disabled = isGenerating || !current;
+  exportCSVButton.disabled = isGenerating || !current;
   setResultState(current ? "완료" : "재생성 필요", current ? "ready" : "error");
 }
 
@@ -1281,7 +1283,8 @@ function createResultSnapshot() {
 
 function updateUndoButtonState() {
   undoEditButton.disabled = isGenerating || !lastPlan || editHistory.length === 0;
-  exportCSVButton.disabled = isGenerating || !lastPlan;
+  exportCSVButton.disabled = isGenerating || !isResultCurrent();
+  copyButton.disabled = isGenerating || !isResultCurrent();
 }
 
 function clearEditHistory() {
@@ -1904,9 +1907,17 @@ function downloadText(filename, text, type) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function canUseResult() {
+  if (isGenerating || !lastPlan || !isResultCurrent()) {
+    setStatus(lastPlan ? "조건이 변경되었습니다. 결과를 다시 생성하세요." : "사용할 결과가 없습니다.", "error");
+    refreshResultConsistency();
+    return false;
+  }
+  return true;
+}
+
 function exportResultCSV() {
-  if (!lastPlan || isGenerating) {
-    setStatus("내보낼 결과가 없습니다.", "error");
+  if (!canUseResult()) {
     return;
   }
   const csv = buildResultCSV(lastPlan, getGroupNames(lastPlan.length), lastRoleAssignments);
@@ -1915,8 +1926,7 @@ function exportResultCSV() {
 }
 
 async function copyResult() {
-  if (!lastPlan) {
-    setStatus("복사할 결과가 없습니다.", "error");
+  if (!canUseResult()) {
     return;
   }
 
