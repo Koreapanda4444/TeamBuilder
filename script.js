@@ -4,6 +4,8 @@ const participantCSVFile = document.querySelector("#participantCSVFile");
 const groupCountInput = document.querySelector("#groupCountInput");
 const rollCountInput = document.querySelector("#rollCountInput");
 const seedInput = document.querySelector("#seedInput");
+const searchTimeInput = document.querySelector("#searchTimeInput");
+const searchOperationsInput = document.querySelector("#searchOperationsInput");
 const groupNamesInput = document.querySelector("#groupNamesInput");
 const groupCapacitiesInput = document.querySelector("#groupCapacitiesInput");
 const togetherInput = document.querySelector("#togetherInput");
@@ -160,7 +162,7 @@ function syncTwoStageControls() {
 }
 
 function getInputFields() {
-  return [seedInput, participantsInput, groupCountInput, rollCountInput, groupNamesInput, groupCapacitiesInput, togetherInput, separateInput, fixedInput, attributesInput, twoStageInput, rolesInput];
+  return [searchTimeInput, searchOperationsInput, seedInput, participantsInput, groupCountInput, rollCountInput, groupNamesInput, groupCapacitiesInput, togetherInput, separateInput, fixedInput, attributesInput, twoStageInput, rolesInput];
 }
 
 function clearFieldValidity() {
@@ -231,6 +233,8 @@ function getStorage() {
 
 function getDraftSettings() {
   return {
+    maxMs: searchTimeInput.value,
+    maxOperations: searchOperationsInput.value,
     seed: seedInput.value,
     participants: participantsInput.value,
     participantRecords: participantRecords ? participantRecords.map((record) => ({ ...record })) : null,
@@ -249,6 +253,8 @@ function getDraftSettings() {
 
 function applyDraftSettings(settings) {
   seedInput.value = settings?.seed || "";
+  searchTimeInput.value = settings?.maxMs || "3000";
+  searchOperationsInput.value = settings?.maxOperations || "1000000";
   participantsInput.value = settings?.participants || "";
   participantRecords = Array.isArray(settings?.participantRecords) ? settings.participantRecords : null;
   groupCountInput.value = settings?.groupCount || "3";
@@ -337,6 +343,8 @@ function getInputs() {
   const rollCount = Number(rollCountInput.value || DEFAULT_ROLL_COUNT);
   const attempts = DEFAULT_ATTEMPTS;
   const errors = [];
+  const maxMs = Number(searchTimeInput.value), maxOperations = Number(searchOperationsInput.value);
+  if (!Number.isInteger(maxMs) || maxMs < 50 || maxMs > 30000 || !Number.isSafeInteger(maxOperations) || maxOperations < 100 || maxOperations > 10000000) errors.push("탐색 제한 범위를 확인하세요.");
 
   if (participants.length < 2) {
     errors.push("참가자는 최소 2명 이상이어야 합니다.");
@@ -374,6 +382,7 @@ function getInputs() {
 
   return {
     participants,
+    maxMs, maxOperations,
     seed: seedInput.value,
     groupCount,
     capacities: capacityInput.capacities,
@@ -1257,7 +1266,7 @@ function parseSettingsJSON(text) {
   const source = data.settings;
   if (!source || typeof source !== "object" || Array.isArray(source)) throw new Error("JSON 설정 형식을 확인하세요.");
   const settings = {};
-  const textFields = ["seed", "participants", "groupNames", "groupCapacities", "together", "separate", "fixed", "attributes", "roles"];
+  const textFields = ["maxMs", "maxOperations", "seed", "participants", "groupNames", "groupCapacities", "together", "separate", "fixed", "attributes", "roles"];
   for (const key of textFields) {
     if (source[key] !== undefined && typeof source[key] !== "string") throw new Error("JSON 설정 입력값의 형식을 확인하세요.");
     settings[key] = source[key] || "";

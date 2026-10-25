@@ -584,13 +584,14 @@ function hasSeparationConflict(group, component, graph) {
   return false;
 }
 
-function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets) {
+function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets, search) {
   const graph = createSeparationGraph(separatedPairs);
   const groups = Array.from({ length: groupCount }, (_, id) => ({ id, targetSize: targetSizes[id], members: [], components: [], componentIds: new Set() }));
   const failedStates = new Set();
   const fixedGroups = new Set(fixedTargets.values());
   const pending = shuffle(components).sort((a, b) => b.size - a.size);
   function domain(component) {
+    checkSearchBudget(search, groups.length);
     const fixed = fixedTargets.get(component.id);
     return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, graph));
   }
@@ -607,6 +608,8 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
     });
   }
   function place() {
+    search.nodes += 1;
+    checkSearchBudget(search);
     if (!pending.length) return groups.every((group) => group.members.length === group.targetSize);
     const stateKey = groups.map((group) => [...group.componentIds].sort((a, b) => a - b).join(",")).join("|");
     if (failedStates.has(stateKey)) return false;
@@ -733,7 +736,44 @@ function validatePlan(plan, togetherRules, separateRules, fixedRules = [], attri
   return audit;
 }
 
-function buildPlan(input) {
+class SearchLimitError extends Error {}
+
+function checkSearchBudget(search, operations = 1) {
+  search.operations += operations;
+  if (search.operations > search.maxOperations || performance.now() - search.start >= search.maxMs) throw new SearchLimitError("탐색 한계에 도달했습니다. 불가능이 증명된 것은 아닙니다.");
+  if (search.onProgress && search.operations - search.lastProgress >= 10000) {
+    search.lastProgress = search.operations;
+    search.onProgress({ nodes: search.nodes, operations: search.operations, elapsedMs: Math.round(performance.now() - search.start) });
+  }
+}
+
+function* capacityLayouts(total, groupCount, capacities) {
+  if (capacities) { yield capacities; return; }
+  const base = Math.floor(total / groupCount), extra = total % groupCount;
+  const order = shuffle(Array.from({ length: groupCount }, (_, index) => index));
+  const sizes = Array(groupCount).fill(base);
+  function* choose(start, left) {
+    if (!left) { yield [...sizes]; return; }
+    for (let index = start; index <= order.length - left; index += 1) {
+      sizes[order[index]] += 1; yield* choose(index + 1, left - 1); sizes[order[index]] -= 1;
+    }
+  }
+  yield* choose(0, extra);
+}
+
+function buildPlan(input, options = {}) {
+  const search = { nodes: 0, operations: 0, start: performance.now(), lastProgress: 0, maxMs: input.maxMs ?? 3000, maxOperations: input.maxOperations ?? 1000000, onProgress: options.onProgress };
+  if (!Number.isFinite(search.maxMs) || search.maxMs <= 0 || !Number.isSafeInteger(search.maxOperations) || search.maxOperations <= 0) return { status: "invalid", error: "탐색 제한을 확인하세요.", audit: [{ type: "error", title: "입력 확인", detail: "탐색 제한을 확인하세요." }] };
+  try {
+    const result = searchPlan(input, search);
+    return { ...result, status: result.status || (result.error ? "impossible" : "success"), search: { nodes: search.nodes, operations: search.operations } };
+  } catch (error) {
+    if (!(error instanceof SearchLimitError)) throw error;
+    return { status: "limit", error: error.message, audit: [{ type: "warning", title: "탐색 한계", detail: error.message }], search: { nodes: search.nodes, operations: search.operations } };
+  }
+}
+
+function searchPlan(input, search) {
   engineRandom = createSeededRandom(input.seed ?? "TeamBuilder");
   const components = createComponents(input.participants, input.togetherRules);
   const maxTargetSize = input.capacities ? Math.max(...input.capacities) : Math.ceil(input.participants.length / input.groupCount);
@@ -780,12 +820,17 @@ function buildPlan(input) {
   let bestPlan = null;
   let bestScore = Infinity;
   const rejectedCapacities = new Set();
+  const layouts = capacityLayouts(input.participants.length, input.groupCount, input.capacities);
+  let layoutExhausted = false;
 
   for (let attempt = 0; attempt < input.attempts; attempt += 1) {
-    const targetSizes = input.capacities || getTargetSizes(input.participants.length, input.groupCount);
+    checkSearchBudget(search);
+    const next = layouts.next();
+    if (next.done) { layoutExhausted = true; if (!bestPlan) break; }
+    const targetSizes = next.done ? (input.capacities || getTargetSizes(input.participants.length, input.groupCount)) : next.value;
     const capacityKey = targetSizes.join(",");
     if (rejectedCapacities.has(capacityKey)) continue;
-    const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets);
+    const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets, search);
     if (!plan) rejectedCapacities.add(capacityKey);
 
     if (plan) {
@@ -813,6 +858,7 @@ function buildPlan(input) {
   }
 
   return {
+    status: layoutExhausted || layouts.next().done ? "impossible" : "limit",
     error: "입력한 내용을 만족하는 배정을 찾지 못했습니다.",
     audit: [
       {
