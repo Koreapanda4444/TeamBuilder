@@ -1015,3 +1015,47 @@ input[type="search"] { min-height: 34px; width: 100%; padding: 5px 9px; border: 
 .bulk-toolbar { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
 #bulkTargetSelect { min-height: 34px; border: 1px solid var(--line); border-radius: 7px; max-width: 130px; }
 #selectionCount, .draft-state { font-size: 12px; color: var(--muted); }
+
+.member-list li { flex-wrap: wrap; }
+.member-label { flex: 1 1 90px; }
+.member-actions { flex: 0 1 205px; }
+.group-card { content-visibility: auto; contain-intrinsic-size: auto 220px; }
+textarea { resize: vertical; max-height: 320px; }
+.preview-list { max-height: 64px; overflow-y: auto; }
+.summary-strip, .quality-strip, .bulk-toolbar { flex-shrink: 0; }
+@media (min-width: 981px) and (max-width: 1250px) {
+  html, body { height: auto; overflow: auto; }
+  .app { height: auto; min-height: 100dvh; }
+  .layout { grid-template-columns: minmax(280px, 330px) minmax(0, 1fr); overflow: visible; }
+  .input-panel { max-height: 850px; }
+  .result-panel { min-height: 600px; }
+  .groups-grid { max-height: 650px; }
+  .side-stack { grid-column: 1 / -1; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: minmax(160px, 230px); }
+}
+@media (max-width: 980px) {
+  .input-panel, .result-panel { overflow: visible; }
+  .side-stack { grid-template-rows: auto; }
+  .history-panel { min-height: 160px; max-height: 360px; }
+  .groups-grid { overflow: visible; }
+  .audit-panel, .saved-panel { min-height: 140px; max-height: 360px; }
+}
+@media (max-width: 780px) {
+  .header-actions { flex-wrap: wrap; }
+  .quality-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .quality-strip div { border: 0; padding-inline: 8px; }
+  .quality-strip div + div { border-left: 1px solid var(--line); }
+  .bulk-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+  .search-field, #bulkMoveButton { grid-column: 1 / -1; }
+  #selectionCount { align-self: center; }
+  #bulkTargetSelect { width: 100%; max-width: none; }
+  .candidate-list { grid-template-columns: 1fr; }
+  .candidates-panel { max-height: 220px; }
+}
+@media (max-width: 520px) {
+  .member-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); flex-basis: auto; }
+  .member-label { flex-basis: auto; }
+  .member-move-select, .lock-button { min-height: 34px; }
+  .member-list li { padding-block: 9px; }
+  .app { padding: 8px; }
+  .quality-strip span { font-size: 11px; }
+}
