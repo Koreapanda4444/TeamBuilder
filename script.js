@@ -65,6 +65,8 @@ let lastAudit = [];
 let lastQuality = null;
 let resultCandidates = [];
 let selectedCandidateId = null;
+let resultHistory = [];
+const RESULT_HISTORY_KEY = "teambuilder.resultHistory.v2";
 let savedSettings = [];
 let activeSavedSettingId = null;
 let lockedAssignments = new Map();
@@ -168,6 +170,7 @@ function setGenerateBusy(active) {
   syncTwoStageControls();
   generateButton.textContent = active ? "생성 중" : "생성";
   renderSavedSettings();
+  renderResultHistory();
   updateUndoButtonState();
 }
 
@@ -893,6 +896,53 @@ function applyWeightConfiguration() {
   } catch (error) { setStatus(error.message, "error"); }
 }
 
+function persistResultHistory() {
+  try { getStorage()?.setItem(RESULT_HISTORY_KEY, JSON.stringify(resultHistory)); }
+  catch { setStatus("결과는 생성되었지만 기록 저장 공간이 부족합니다.", "error"); }
+}
+
+function loadResultHistory() {
+  try {
+    const parsed = JSON.parse(getStorage()?.getItem(RESULT_HISTORY_KEY) || "[]");
+    resultHistory = Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.id === "string" && typeof item.createdAt === "string" && item.settings && item.snapshot).slice(0, 20) : [];
+  } catch { resultHistory = []; }
+}
+
+function recordResultHistory() {
+  if (!lastPlan || !lastQuality?.valid) return;
+  resultHistory.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), settings: structuredClone(getDraftSettings()), snapshot: createResultSnapshot(), candidates: structuredClone(resultCandidates) });
+  resultHistory.splice(20); persistResultHistory(); renderResultHistory();
+}
+
+function restoreResultHistory(id) {
+  if (isGenerating) return false;
+  const item = resultHistory.find((entry) => entry.id === id);
+  if (!item) return false;
+  const previous = getDraftSettings();
+  try {
+    const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: item.settings }));
+    applyDraftSettings(settings);
+    const input = getInputs(), snapshot = structuredClone(item.snapshot);
+    if (!Array.isArray(snapshot.locks) || snapshot.locks.some((entry) => !Array.isArray(entry) || entry.length !== 2 || !input.participants.includes(entry[0]) || !Number.isInteger(entry[1]) || !snapshot.plan?.[entry[1]]?.includes(entry[0]))) throw new Error("기록의 고정 정보를 확인하세요.");
+    input.fixedRules.push(...snapshot.locks.map(([member, groupIndex]) => ({ member, groupIndex })));
+    const errors = validateAssignmentResult(snapshot.plan, input, snapshot.roleAssignments);
+    if (errors.length) throw new Error(errors[0]);
+    snapshot.signature = getInputSignature(); snapshot.quality = scoreAssignment(snapshot.plan, input, snapshot.roleAssignments);
+    resultCandidates = (Array.isArray(item.candidates) ? item.candidates : []).filter((candidate) => candidate && !validateAssignmentResult(candidate.plan, input, candidate.roleAssignments).length).slice(0, 5).map((candidate) => ({ ...candidate, quality: scoreAssignment(candidate.plan, input, candidate.roleAssignments) }));
+    restoreResultSnapshot(snapshot); clearEditHistory(); renderDraftStats(); renderResultHistory();
+    setStatus("생성 조건·시드와 결과를 복원했습니다.", "success"); return true;
+  } catch (error) { applyDraftSettings(previous); setStatus(error.message || "결과 기록을 복원할 수 없습니다.", "error"); return false; }
+}
+
+function renderResultHistory() {
+  const list = document.querySelector("#resultHistoryList"); list.replaceChildren();
+  resultHistory.forEach((item) => {
+    const button = document.createElement("button"); button.type = "button"; button.className = "saved-load";
+    button.textContent = `${new Date(item.createdAt).toLocaleString()} · 시드 ${item.settings.seed || "—"} · ${item.snapshot.quality?.total?.toFixed(1) || "—"}점`;
+    button.disabled = isGenerating; button.addEventListener("click", () => restoreResultHistory(item.id)); list.append(button);
+  });
+}
+
 function selectResultCandidate(id) {
   if (!canUseResult()) return false;
   const candidate = resultCandidates.find((item) => item.id === id);
@@ -1354,6 +1404,7 @@ async function generate() {
         : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
       "success",
     );
+    recordResultHistory();
   } catch (error) {
     if (previousResult) restoreResultSnapshot(previousResult);
     else { lastPlan = null; renderGroups(null); }
@@ -1601,6 +1652,7 @@ function clearLockedAssignments() {
 function boot() {
   loadSavedSettings();
   reset();
+  loadResultHistory(); renderResultHistory();
 }
 
 function handleInputKeydown(event) {
