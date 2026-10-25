@@ -732,6 +732,11 @@ function validateManualPlan(plan, roleAssignments) {
 }
 
 function applyManualPlan(plan, roles = lastRoleAssignments) {
+  const input = getInputs();
+  if (input.twoStage && validateManualPlan(plan, roles).length) {
+    const matched = plan.map((group) => findRoleMatching(group, input));
+    if (matched.every(Boolean)) roles = matched;
+  }
   const errors = validateManualPlan(plan, roles);
   if (errors.length) {
     setStatus(errors[0], "error");
@@ -1161,7 +1166,7 @@ async function generate() {
       }
 
       if (currentResult?.plan) {
-        renderGroups(currentResult.plan, null);
+        renderGroups(currentResult.plan, currentResult.roleAssignments);
       }
 
       setResultState(`${current}/${total}`);
@@ -1193,7 +1198,7 @@ async function generate() {
     }
 
     engineRandom = createSeededRandom(`${input.seed}:roles`);
-    const assignedRoles = input.twoStage ? assignRolesToPlan(result.plan, input.roles) : null;
+    const assignedRoles = input.twoStage ? result.roleAssignments : null;
     const validationErrors = validateAssignmentResult(result.plan, input, assignedRoles);
     if (validationErrors.length) {
       lastPlan = null; lastRoleAssignments = null;

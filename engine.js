@@ -604,7 +604,7 @@ function hasSeparationConflict(group, component, graph) {
   return false;
 }
 
-function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets, search) {
+function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets, search, input) {
   const graph = createSeparationGraph(separatedPairs);
   const groups = Array.from({ length: groupCount }, (_, id) => ({ id, targetSize: targetSizes[id], members: [], components: [], componentIds: new Set() }));
   const failedStates = new Set();
@@ -613,7 +613,7 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
   function domain(component) {
     checkSearchBudget(search, groups.length);
     const fixed = fixedTargets.get(component.id);
-    return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, graph));
+    return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, graph) && (!input.twoStage || findRoleMatching([...group.members, ...component.members], input, 1, true) !== null));
   }
   function forwardCheck() {
     const domains = pending.map((component) => ({ component, choices: domain(component) }));
@@ -630,7 +630,7 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
   function place() {
     search.nodes += 1;
     checkSearchBudget(search);
-    if (!pending.length) return groups.every((group) => group.members.length === group.targetSize);
+    if (!pending.length) return groups.every((group) => group.members.length === group.targetSize && (!input.twoStage || findRoleMatching(group.members, input) !== null));
     const stateKey = groups.map((group) => [...group.componentIds].sort((a, b) => a - b).join(",")).join("|");
     if (failedStates.has(stateKey)) return false;
     let selected = 0;
@@ -849,6 +849,7 @@ function searchPlan(input, search) {
   }
 
   let bestPlan = null;
+  let bestRoles = null;
   let bestScore = Infinity;
   const rejectedCapacities = new Set();
   const layouts = capacityLayouts(input.participants.length, input.groupCount, input.capacities);
@@ -861,7 +862,7 @@ function searchPlan(input, search) {
     const targetSizes = next.done ? (input.capacities || getTargetSizes(input.participants.length, input.groupCount)) : next.value;
     const capacityKey = targetSizes.join(",");
     if (rejectedCapacities.has(capacityKey)) continue;
-    const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets, search);
+    const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets, search, input);
     if (!plan) rejectedCapacities.add(capacityKey);
 
     if (plan) {
@@ -869,6 +870,7 @@ function searchPlan(input, search) {
 
       if (score < bestScore) {
         bestPlan = plan;
+        bestRoles = input.twoStage ? plan.map((group) => findRoleMatching(group, input)) : null;
         bestScore = score;
       }
 
@@ -879,10 +881,11 @@ function searchPlan(input, search) {
   }
 
   if (bestPlan) {
-    const errors = validateAssignmentResult(bestPlan, input, null, false);
+    const errors = validateAssignmentResult(bestPlan, input, bestRoles);
     if (errors.length) return { error: errors[0], audit: errors.map((detail) => ({ type: "error", title: "결과 검증 실패", detail })) };
     return {
       plan: bestPlan,
+      roleAssignments: bestRoles,
       score: bestScore,
       audit: validatePlan(bestPlan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules),
     };
