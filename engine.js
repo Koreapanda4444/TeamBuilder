@@ -762,6 +762,7 @@ function* capacityLayouts(total, groupCount, capacities) {
 }
 
 function buildPlan(input, options = {}) {
+  if (input.errors?.length) return { status: "invalid", error: input.errors[0], audit: input.errors.map((detail) => ({ type: "error", title: "입력 오류", detail })) };
   const search = { nodes: 0, operations: 0, start: performance.now(), lastProgress: 0, maxMs: input.maxMs ?? 3000, maxOperations: input.maxOperations ?? 1000000, onProgress: options.onProgress };
   if (!Number.isFinite(search.maxMs) || search.maxMs <= 0 || !Number.isSafeInteger(search.maxOperations) || search.maxOperations <= 0) return { status: "invalid", error: "탐색 제한을 확인하세요.", audit: [{ type: "error", title: "입력 확인", detail: "탐색 제한을 확인하세요." }] };
   try {

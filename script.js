@@ -1063,20 +1063,29 @@ function applyLockedRules(input) {
   input.fixedRules = [...input.fixedRules, ...lockedRules];
 }
 
+function getFailureDiagnostic(status) {
+  const messages = {
+    invalid: ["입력 오류", "명단과 규칙의 입력 형식을 확인하세요."],
+    limit: ["탐색 한계", "불가능이 증명된 것은 아닙니다. 탐색 시간·연산량을 늘리거나 조건을 조정하세요."],
+    impossible: ["조건 충돌", "현재 조건으로 배정할 수 없습니다. 규칙 영역의 충돌 내용을 확인하세요."],
+    error: ["계산 오류", "다시 생성하거나 입력과 탐색 제한을 확인하세요."]
+  };
+  const [title, detail] = messages[status] || messages.error;
+  return { type: status === "limit" ? "warning" : "error", title, detail };
+}
+
 function getPublicAudit(items, hasResult = Boolean(lastPlan)) {
-  const failed = items.some((item) => item.type === "error" || item.title === "생성 실패");
-  if (failed) {
-    return [{ type: "error", title: "입력 확인", detail: "입력을 확인한 뒤 다시 시도하세요." }];
-  }
-  if (hasResult || items.length) {
-    return [{ type: "ok", title: "배정 완료", detail: "입력 조건을 만족하는 결과입니다." }];
-  }
+  const limit = items.find((item) => item.title === "탐색 한계");
+  if (limit) return [getFailureDiagnostic("limit")];
+  if (items.some((item) => item.type === "error" || item.title === "생성 실패")) return [{ type: "error", title: "입력 확인", detail: "규칙 영역의 안내를 확인한 뒤 다시 생성하세요." }];
+  if (hasResult && !isResultCurrent()) return [{ type: "warning", title: "재생성 필요", detail: "현재 입력과 이전 결과가 다릅니다." }];
+  if (hasResult) return [{ type: "ok", title: "배정 완료", detail: "입력 조건을 만족하는 결과입니다." }];
   return [{ type: "ok", title: "대기 중", detail: "결과 없음" }];
 }
 
 function renderAudit(items, input = null) {
   ruleFeedback.innerHTML = "";
-  items.filter((item) => item.type === "error" || item.title === "생성 실패").forEach((item) => {
+  items.filter((item) => item.type === "error" || item.type === "warning").forEach((item) => {
     const detail = document.createElement("p");
     detail.textContent = item.detail;
     ruleFeedback.append(detail);
@@ -1170,9 +1179,10 @@ async function generate() {
       markInvalidFields([result.error]);
       clearEditHistory();
       renderGroups(null);
-      renderAudit(result.audit, input);
-      setResultState("실패", "error");
-      setStatus("입력을 확인한 뒤 다시 시도하세요.", "error");
+      const diagnostic = getFailureDiagnostic(result.status);
+      renderAudit([diagnostic, ...(result.audit || [])], input);
+      setResultState(diagnostic.title, "error");
+      setStatus(diagnostic.detail, result.status === "limit" ? "default" : "error");
       return;
     }
 
@@ -1202,6 +1212,11 @@ async function generate() {
         : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
       "success",
     );
+  } catch (error) {
+    if (previousResult) restoreResultSnapshot(previousResult);
+    else { lastPlan = null; renderGroups(null); }
+    renderAudit([getFailureDiagnostic("error")]);
+    setResultState("계산 오류", "error"); setStatus(error.message || "배정 계산 중 오류가 발생했습니다.", "error");
   } finally {
     isGenerating = false;
     setGenerateBusy(false);
