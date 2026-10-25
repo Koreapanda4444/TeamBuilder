@@ -495,7 +495,7 @@ async function buildRolledPlan(input, onProgress = null) {
     }
 
     successCount += 1;
-    const score = Number.isFinite(result.score) ? result.score : getAttributeBalanceScore(result.plan, input.attributeRules);
+    const score = Number.isFinite(result.score) ? result.score : getAttributeBalanceScore(result.plan, input.attributeRules, input.profiles);
     const currentResult = {
       ...result,
       score,

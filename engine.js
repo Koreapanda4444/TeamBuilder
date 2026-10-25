@@ -659,38 +659,37 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
   return place() ? groups.map((group) => shuffle(group.members)) : null;
 }
 
-function getAttributeBalanceScore(plan, attributeRules = []) {
-  if (!attributeRules.length) {
-    return 0;
-  }
-
-  const groupIndexByName = new Map();
-  const valueCounts = new Map();
-
-  plan.forEach((group, groupIndex) => {
-    group.forEach((member) => groupIndexByName.set(member, groupIndex));
+function getAttributeDistributions(plan, profiles) {
+  const byName = new Map(profiles.map((profile) => [profile.name, profile]));
+  const dimensions = [...new Set(profiles.flatMap((profile) => Object.keys(profile.attributes || {})))].sort();
+  return dimensions.map((dimension) => {
+    const known = profiles.map((profile) => profile.attributes?.[dimension]).filter((value) => value !== undefined);
+    const numeric = known.length > 0 && known.every((value) => typeof value === "number");
+    const groups = plan.map((members) => {
+      const values = members.map((member) => byName.get(member)?.attributes?.[dimension]).filter((value) => value !== undefined);
+      const counts = new Map(); values.forEach((value) => counts.set(String(value), (counts.get(String(value)) || 0) + 1));
+      return { count: values.length, size: members.length, mean: numeric && values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null, values: Object.fromEntries(counts) };
+    });
+    return { dimension, type: numeric ? "numeric" : "categorical", groups, min: numeric ? Math.min(...known) : null, max: numeric ? Math.max(...known) : null };
   });
+}
 
-  attributeRules.forEach((rule) => {
-    const groupIndex = groupIndexByName.get(rule.member);
-
-    if (groupIndex === undefined) {
-      return;
-    }
-
-    if (!valueCounts.has(rule.value)) {
-      valueCounts.set(rule.value, Array.from({ length: plan.length }, () => 0));
-    }
-
-    valueCounts.get(rule.value)[groupIndex] += 1;
-  });
-
+function getAttributeBalanceScore(plan, attributeRules = [], profiles = null) {
+  const data = profiles || createParticipantProfiles(plan.flat(), [], attributeRules);
   let score = 0;
-
-  valueCounts.forEach((counts) => {
-    score += Math.max(...counts) - Math.min(...counts);
-  });
-
+  for (const distribution of getAttributeDistributions(plan, data)) {
+    if (distribution.type === "numeric") {
+      const means = distribution.groups.map((group) => group.mean).filter((mean) => mean !== null);
+      const range = distribution.max - distribution.min;
+      if (means.length && range > 0) score += (Math.max(...means) - Math.min(...means)) / range;
+    } else {
+      const values = new Set(distribution.groups.flatMap((group) => Object.keys(group.values)));
+      values.forEach((value) => {
+        const counts = distribution.groups.map((group) => distribution.dimension === "attribute" ? (group.values[value] || 0) : (group.values[value] || 0) / Math.max(1, group.size));
+        score += Math.max(...counts) - Math.min(...counts);
+      });
+    }
+  }
   return score;
 }
 
@@ -855,7 +854,7 @@ function searchPlan(input, search) {
     if (!plan) rejectedCapacities.add(capacityKey);
 
     if (plan) {
-      const score = getAttributeBalanceScore(plan, input.attributeRules);
+      const score = getAttributeBalanceScore(plan, input.attributeRules, input.profiles);
 
       if (score < bestScore) {
         bestPlan = plan;
