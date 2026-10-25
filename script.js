@@ -4,6 +4,16 @@ const participantCSVFile = document.querySelector("#participantCSVFile");
 const groupCountInput = document.querySelector("#groupCountInput");
 const rollCountInput = document.querySelector("#rollCountInput");
 const seedInput = document.querySelector("#seedInput");
+const profileMemberSelect = document.querySelector("#profileMemberSelect");
+const profilePreferencesInput = document.querySelector("#profilePreferencesInput");
+const profileRestrictionsInput = document.querySelector("#profileRestrictionsInput");
+const profileRequiredRoleInput = document.querySelector("#profileRequiredRoleInput");
+const profileAttributesInput = document.querySelector("#profileAttributesInput");
+const profileApplyButton = document.querySelector("#profileApplyButton");
+const attributeWeightsInput = document.querySelector("#attributeWeightsInput");
+const roleWeightInput = document.querySelector("#roleWeightInput");
+const weightsApplyButton = document.querySelector("#weightsApplyButton");
+const qualityStrip = document.querySelector("#qualityStrip");
 const searchTimeInput = document.querySelector("#searchTimeInput");
 const searchOperationsInput = document.querySelector("#searchOperationsInput");
 const groupNamesInput = document.querySelector("#groupNamesInput");
@@ -138,6 +148,7 @@ function setGenerateBusy(active) {
   generationProgress.hidden = !active;
   groupsGrid.setAttribute("aria-busy", String(active));
   generateButton.disabled = active;
+  [profileMemberSelect, profilePreferencesInput, profileRestrictionsInput, profileRequiredRoleInput, profileAttributesInput, profileApplyButton, attributeWeightsInput, roleWeightInput, weightsApplyButton].forEach((element) => { element.disabled = active; });
   importCSVButton.disabled = active;
   participantCSVFile.disabled = active;
   importJSONButton.disabled = active;
@@ -550,6 +561,7 @@ function renderSummary(participantCount, groupCount) {
 }
 
 function renderDraftStats() {
+  renderProfileConfiguration();
   const participants = uniqueItems(getParticipantNames());
   participantCount.textContent = `${participants.length}명`;
   renderSummary(participants.length, Number(groupCountInput.value) || 0);
@@ -803,7 +815,70 @@ function swapMembers(member, other) {
   return applyManualPlan(plan, roles);
 }
 
+function parseAttributeEntries(text, weights = false) {
+  const entries = splitLines(text).map((line) => {
+    const at = line.indexOf("=");
+    if (at <= 0 || !line.slice(at + 1).trim()) throw new Error("속성은 항목=값 형식으로 입력하세요.");
+    const key = line.slice(0, at).trim(), raw = line.slice(at + 1).trim();
+    return [key, weights || /^[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?$/iu.test(raw) ? Number(raw) : raw];
+  });
+  if (new Set(entries.map(([key]) => key)).size !== entries.length) throw new Error("속성 항목이 중복됩니다.");
+  return Object.fromEntries(entries);
+}
+
+function renderSelectedProfile() {
+  const name = profileMemberSelect.value;
+  const profile = createParticipantProfiles(name ? [name] : [], participantRecords)[0];
+  profilePreferencesInput.value = profile?.preferences.join(", ") || "";
+  profileRestrictionsInput.value = profile?.restrictions.join(", ") || "";
+  profileRequiredRoleInput.value = profile?.requiredRole || "";
+  profileAttributesInput.value = Object.entries(profile?.attributes || {}).map(([key, value]) => `${key}=${value}`).join("\n");
+}
+
+function renderProfileConfiguration() {
+  const selected = profileMemberSelect.value;
+  profileMemberSelect.replaceChildren();
+  const names = uniqueItems(getParticipantNames());
+  names.forEach((name) => { const option = document.createElement("option"); option.value = name; option.textContent = name; profileMemberSelect.append(option); });
+  profileMemberSelect.value = names.includes(selected) ? selected : (names[0] || "");
+  renderSelectedProfile();
+  attributeWeightsInput.value = Object.entries(balanceWeights).map(([key, value]) => `${key}=${value}`).join("\n");
+  roleWeightInput.value = String(rolePreferenceWeight);
+}
+
+function applyProfileConfiguration() {
+  if (isGenerating) return;
+  try {
+    const names = uniqueItems(getParticipantNames()), name = profileMemberSelect.value;
+    if (!names.includes(name)) throw new Error("참가자를 먼저 선택하세요.");
+    const list = (value) => value.split(/[,;|]/u).map((role) => role.trim()).filter(Boolean);
+    const profiles = createParticipantProfiles(names, participantRecords);
+    const index = profiles.findIndex((profile) => profile.name === name);
+    profiles[index] = normalizeParticipantProfile({ ...profiles[index], preferences: list(profilePreferencesInput.value), restrictions: list(profileRestrictionsInput.value), requiredRole: profileRequiredRoleInput.value, attributes: parseAttributeEntries(profileAttributesInput.value) });
+    participantRecords = profiles;
+    renderDraftStats(); renderGroups(lastPlan); refreshResultConsistency();
+    setStatus(`${name}의 프로필을 적용했습니다.`, "success");
+  } catch (error) { setStatus(error.message, "error"); }
+}
+
+function applyWeightConfiguration() {
+  if (isGenerating) return;
+  try {
+    const weights = normalizeBalanceWeights(parseAttributeEntries(attributeWeightsInput.value, true));
+    const roleWeight = Number(roleWeightInput.value);
+    if (!Number.isFinite(roleWeight) || roleWeight < 0 || roleWeight > 100) throw new Error("역할 선호 가중치는 0부터 100 사이여야 합니다.");
+    balanceWeights = weights; rolePreferenceWeight = roleWeight;
+    renderGroups(lastPlan); refreshResultConsistency(); setStatus("균형 가중치를 적용했습니다.", "success");
+  } catch (error) { setStatus(error.message, "error"); }
+}
+
+function renderQuality() {
+  qualityStrip.hidden = !lastQuality || !isResultCurrent();
+  for (const [key, id] of [["total", "totalQuality"], ["balance", "balanceQuality"], ["role", "roleQuality"]]) document.querySelector(`#${id}`).textContent = lastQuality ? lastQuality[key].toFixed(1) : "—";
+}
+
 function renderGroups(plan, roleAssignments = lastRoleAssignments) {
+  renderQuality();
   groupsGrid.innerHTML = "";
   emptyState.classList.toggle("is-hidden", Boolean(plan));
   updateUndoButtonState();
@@ -1521,6 +1596,9 @@ cancelButton.addEventListener("click", cancelGeneration);
 resetButton.addEventListener("click", () => reset());
 undoEditButton.addEventListener("click", undoLastEdit);
 redoEditButton.addEventListener("click", redoLastEdit);
+profileMemberSelect.addEventListener("change", renderSelectedProfile);
+profileApplyButton.addEventListener("click", applyProfileConfiguration);
+weightsApplyButton.addEventListener("click", applyWeightConfiguration);
 clearLocksButton.addEventListener("click", clearLockedAssignments);
 copyButton.addEventListener("click", copyResult);
 exportCSVButton.addEventListener("click", exportResultCSV);

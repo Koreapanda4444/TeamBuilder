@@ -974,3 +974,10 @@ select:focus-visible,
   cursor: not-allowed;
   opacity: 0.65;
 }
+
+[hidden] { display: none !important; }
+.input-panel { overflow-y: auto; }
+.profile-panel[open], .weights-panel[open] { display: grid; gap: 8px; }
+.field select { min-height: 34px; max-width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 5px; }
+.quality-strip strong { color: var(--primary); }
+#generationProgress { width: 100%; accent-color: var(--primary); }
