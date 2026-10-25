@@ -995,3 +995,23 @@ input[type="search"] { min-height: 34px; width: 100%; padding: 5px 9px; border: 
 .member-list li[draggable="true"] { cursor: grab; }
 .is-drop-target { outline: 2px solid var(--primary); outline-offset: -2px; background: #edf7f4 !important; }
 .editing-help { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+
+.result-toolbar { align-items: stretch; flex-direction: column; gap: 8px; }
+.result-toolbar > div:first-child { flex-shrink: 0; }
+.result-toolbar h2, #resultState { white-space: nowrap; }
+.result-actions { justify-content: flex-start; }
+.result-actions .compact { padding-inline: 10px; font-size: 12px; }
+.quality-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); flex-shrink: 0; }
+.quality-strip div { flex-wrap: wrap; padding-block: 6px; }
+.side-stack { grid-template-rows: minmax(100px, .6fr) minmax(160px, 1fr) minmax(180px, 1.2fr); }
+.history-panel { display: flex; flex-direction: column; gap: 8px; padding: 10px; min-height: 0; }
+.history-panel .saved-load { line-height: 1.5; overflow-wrap: anywhere; }
+.profile-panel, .weights-panel, .rules-panel { border-top: 1px solid var(--line); padding-top: 8px; }
+.profile-panel summary, .weights-panel summary, .candidates-panel summary { cursor: pointer; font-size: 13px; font-weight: 800; }
+.candidates-panel { flex: 0 0 auto; max-height: 180px; overflow: auto; }
+.candidate-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.candidate-button { text-align: left; line-height: 1.5; }
+.candidate-button[aria-pressed="true"] { box-shadow: inset 3px 0 0 var(--primary); }
+.bulk-toolbar { padding: 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-soft); }
+#bulkTargetSelect { min-height: 34px; border: 1px solid var(--line); border-radius: 7px; max-width: 130px; }
+#selectionCount, .draft-state { font-size: 12px; color: var(--muted); }

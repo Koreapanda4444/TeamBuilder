@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="TeamBuilder는 참가자를 그룹으로 나누고 결과를 확인하는 도구입니다." />
-    <title>TeamBuilder</title>
+    <title>TeamBuilder 2.0</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -13,7 +13,7 @@
         <div class="identity">
           <div class="mark" aria-hidden="true">TB</div>
           <div>
-            <p>TeamBuilder</p>
+            <p>TeamBuilder 2.0</p>
             <h1>새 배정</h1>
           </div>
         </div>
@@ -173,7 +173,7 @@
           </div>
 
           <div class="summary-strip quality-strip" id="qualityStrip" hidden aria-label="배정 품질 점수"><div><span>전체</span><strong id="totalQuality">—</strong></div><div><span>속성 균형</span><strong id="balanceQuality">—</strong></div><div><span>역할 적합도</span><strong id="roleQuality">—</strong></div></div>
-          <details class="candidates-panel" open><summary>후보 비교</summary><div id="resultCandidatesList" class="candidate-list"></div></details>
+          <details class="candidates-panel" open><summary id="candidateSummary">후보 비교</summary><div id="resultCandidatesList" class="candidate-list"></div></details>
           <div class="empty-state" id="emptyState">
             <strong>결과 없음</strong>
           </div>

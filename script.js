@@ -979,6 +979,7 @@ function restoreResultHistory(id) {
 
 function renderResultHistory() {
   const list = document.querySelector("#resultHistoryList"); list.replaceChildren();
+  if (!resultHistory.length) { const empty = document.createElement("p"); empty.className = "saved-empty"; empty.textContent = "생성한 결과가 여기에 기록됩니다."; list.append(empty); }
   resultHistory.forEach((item) => {
     const button = document.createElement("button"); button.type = "button"; button.className = "saved-load";
     button.textContent = `${new Date(item.createdAt).toLocaleString()} · 시드 ${item.settings.seed || "—"} · ${item.snapshot.quality?.total?.toFixed(1) || "—"}점`;
@@ -995,6 +996,8 @@ function selectResultCandidate(id) {
 
 function renderCandidates() {
   const list = document.querySelector("#resultCandidatesList"); list.replaceChildren();
+  document.querySelector(".candidates-panel").hidden = !resultCandidates.length;
+  document.querySelector("#candidateSummary").textContent = `후보 비교 (${resultCandidates.length})`;
   resultCandidates.forEach((candidate, index) => {
     const button = document.createElement("button");
     button.type = "button"; button.className = "candidate-button";
