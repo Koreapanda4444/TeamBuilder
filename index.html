@@ -159,7 +159,7 @@
             </div>
           </div>
 
-          <div class="bulk-toolbar"><label class="field search-field"><span>결과 참가자 검색</span><input id="participantSearch" type="search" placeholder="이름·역할·속성" /></label><span id="selectionCount" role="status">0명 선택</span><button id="selectVisibleButton" class="secondary-button compact" type="button">검색 결과 선택/해제</button><select id="bulkTargetSelect" aria-label="일괄 이동 대상 그룹"></select><button id="bulkMoveButton" class="secondary-button compact" type="button">이동 / 선택끼리 교환</button><button id="bulkLockButton" class="secondary-button compact" type="button">선택 고정</button><button id="bulkUnlockButton" class="secondary-button compact" type="button">선택 고정 해제</button></div>
+          <div class="bulk-toolbar" role="group" aria-label="참가자 검색과 일괄 편집"><label class="field search-field"><span>결과 참가자 검색</span><input id="participantSearch" type="search" placeholder="이름·역할·속성" /></label><span id="selectionCount" role="status" aria-atomic="true">0명 선택</span><span id="searchMatchCount" class="sr-only" role="status" aria-live="polite"></span><button id="selectVisibleButton" class="secondary-button compact" type="button">검색 결과 선택/해제</button><select id="bulkTargetSelect" aria-label="일괄 이동 대상 그룹"></select><button id="bulkMoveButton" class="secondary-button compact" type="button">이동 / 선택끼리 교환</button><button id="bulkLockButton" class="secondary-button compact" type="button">선택 고정</button><button id="bulkUnlockButton" class="secondary-button compact" type="button">선택 고정 해제</button></div>
           <p class="editing-help" id="dragHelp">참가자를 그룹에 끌어 이동하거나 다른 참가자 위에 놓아 교환하세요. 이동·교환 선택창으로도 편집할 수 있습니다.</p>
           <div class="summary-strip" id="summaryStrip">
             <div>
@@ -186,7 +186,7 @@
             <div class="block-header">
               <h2>검토</h2>
             </div>
-            <div class="audit-list" id="auditList"></div>
+            <div class="audit-list" id="auditList" tabindex="0" aria-label="배정 검토 내용"></div>
           </section>
 
           <section class="panel saved-panel">

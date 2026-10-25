@@ -81,6 +81,8 @@ let isGenerating = false;
 let activeWorker = null;
 let cancelActiveComputation = null;
 let generationCancelled = false;
+let generationReturnFocus = null;
+let lastProgressAnnouncement = 0;
 const DEFAULT_ATTEMPTS = 1800;
 const DEFAULT_ROLL_COUNT = 1;
 const MAX_ROLL_COUNT = 30;
@@ -125,6 +127,8 @@ async function importParticipantCSV(event) {
 
 
 function setStatus(text, type = "default") {
+  statusMessage.setAttribute("role", type === "error" ? "alert" : "status");
+  statusMessage.setAttribute("aria-live", type === "error" ? "assertive" : "polite");
   statusMessage.textContent = text;
   statusMessage.classList.toggle("is-error", type === "error");
   statusMessage.classList.toggle("is-success", type === "success");
@@ -154,6 +158,7 @@ function refreshResultConsistency() {
 }
 
 function setGenerateBusy(active) {
+  if (active && document.activeElement?.matches?.("button,input,textarea,select")) generationReturnFocus = document.activeElement;
   cancelButton.hidden = !active;
   cancelButton.disabled = !active;
   generationProgress.hidden = !active;
@@ -179,6 +184,12 @@ function setGenerateBusy(active) {
   renderSavedSettings();
   renderResultHistory();
   updateUndoButtonState();
+  updateBulkControls();
+  if (active && generationReturnFocus) cancelButton.focus();
+  if (!active && generationReturnFocus) {
+    if (document.activeElement === cancelButton || document.activeElement === document.body) generationReturnFocus.focus();
+    generationReturnFocus = null;
+  }
 }
 
 function waitForResultPaint() {
@@ -461,6 +472,9 @@ function cancelledResult() { return { status: "cancelled", error: "배정을 취
 function reportSearchProgress(progress) {
   generationProgress.max = Number(searchOperationsInput.value) || 1000000;
   generationProgress.value = progress.operations;
+  generationProgress.setAttribute("aria-valuetext", `${progress.operations}회 검사, ${progress.nodes}개 탐색`);
+  if (performance.now() - lastProgressAnnouncement < 500) return;
+  lastProgressAnnouncement = performance.now();
   setStatus(`${progress.operations.toLocaleString()}회 검사 · ${progress.nodes.toLocaleString()}개 탐색 · ${progress.elapsedMs}ms`);
 }
 
@@ -1078,6 +1092,9 @@ function completeMemberDrop(targetIndex, other = null) {
 function renderMember(member, index, plan, memberRoles, groupNames, protectedMembers, current) {
   const item = document.createElement("li"), label = document.createElement("label"), checkbox = document.createElement("input"), name = document.createElement("span"), actions = document.createElement("div"), moveSelect = document.createElement("select"), lockButton = document.createElement("button");
   const locked = lockedAssignments.get(member) === index;
+  checkbox.setAttribute("data-focus-key", JSON.stringify([member, "select"]));
+  moveSelect.setAttribute("data-focus-key", JSON.stringify([member, "move"]));
+  lockButton.setAttribute("data-focus-key", JSON.stringify([member, "lock"]));
   checkbox.type = "checkbox"; checkbox.checked = selectedMembers.has(member); checkbox.disabled = isGenerating || !current;
   checkbox.setAttribute("aria-label", `${member} 선택`);
   checkbox.addEventListener("change", () => { checkbox.checked ? selectedMembers.add(member) : selectedMembers.delete(member); updateBulkControls(); });
@@ -1091,6 +1108,7 @@ function renderMember(member, index, plan, memberRoles, groupNames, protectedMem
   lockButton.textContent = locked ? "해제" : "고정"; lockButton.setAttribute("aria-pressed", String(locked)); lockButton.setAttribute("aria-label", locked ? `${member} 고정 해제` : `${member} 현재 그룹에 고정`);
   lockButton.addEventListener("click", () => toggleMemberLock(member, index));
   const swapSelect = document.createElement("select"), placeholder = document.createElement("option");
+  swapSelect.setAttribute("data-focus-key", JSON.stringify([member, "swap"]));
   swapSelect.className = "member-move-select"; swapSelect.setAttribute("aria-label", `${member} 교환 상대`); placeholder.value = ""; placeholder.textContent = "교환 상대"; swapSelect.append(placeholder);
   let populated = false;
   swapSelect.addEventListener("focus", () => {
@@ -1118,7 +1136,18 @@ function renderMember(member, index, plan, memberRoles, groupNames, protectedMem
   return item;
 }
 
+function restoreWorkspaceFocus(key) {
+  if (!key) return;
+  const controls = [...groupsGrid.querySelectorAll("[data-focus-key]")];
+  const target = controls.find((element) => element.getAttribute("data-focus-key") === key && !element.disabled);
+  if (target) target.focus({ preventScroll: true });
+  else {
+    try { const [member] = JSON.parse(key); controls.find((element) => element.getAttribute("data-focus-key") === JSON.stringify([member, "lock"]) && !element.disabled)?.focus({ preventScroll: true }); } catch {}
+  }
+}
+
 function renderGroups(plan, roleAssignments = lastRoleAssignments) {
+  const focusKey = document.activeElement?.getAttribute?.("data-focus-key");
   renderQuality(); renderCandidates(); groupsGrid.replaceChildren();
   emptyState.classList.toggle("is-hidden", Boolean(plan)); updateUndoButtonState();
   selectedMembers = new Set([...selectedMembers].filter((member) => plan?.some((group) => group.includes(member))));
@@ -1144,6 +1173,8 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
     if (distributions.length) { const summary = document.createElement("p"); summary.className = "attribute-summary"; summary.textContent = distributions.map((entry) => `${entry.dimension}: ${entry.type === "numeric" ? (entry.groups[index].mean?.toFixed(1) ?? "—") : Object.entries(entry.groups[index].values).map(([value, amount]) => `${value} ${amount}`).join(", ")}`).join(" · "); card.append(summary); }
     card.append(list); groupsGrid.append(card);
   });
+  document.querySelector("#searchMatchCount").textContent = `${plan.flat().filter((member) => matchesParticipant(member, input)).length}명 표시`;
+  restoreWorkspaceFocus(focusKey);
 }
 
 function getSettingsMeta(settings) {
@@ -1782,6 +1813,7 @@ function boot() {
 }
 
 function handleInputKeydown(event) {
+  if (event.isComposing) return;
   if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
     event.preventDefault();
     generate();
@@ -1789,6 +1821,7 @@ function handleInputKeydown(event) {
 }
 
 function handleSingleLineKeydown(event) {
+  if (event.isComposing) return;
   if (event.key === "Enter") {
     event.preventDefault();
     generate();
@@ -1796,6 +1829,7 @@ function handleSingleLineKeydown(event) {
 }
 
 function handleSavedNameKeydown(event) {
+  if (event.isComposing) return;
   if (event.key !== "Enter") {
     return;
   }
@@ -1860,6 +1894,16 @@ getInputFields().forEach((input) => {
   });
 });
 
+document.addEventListener("keydown", (event) => {
+  if (event.isComposing) return;
+  if (event.key === "Escape") { if (isGenerating) { event.preventDefault(); cancelGeneration(); } finishDrag(); return; }
+  if (!(event.ctrlKey || event.metaKey) || event.target?.closest?.("input,textarea,select,[contenteditable='true']")) return;
+  const key = event.key.toLowerCase();
+  if (key === "z" || key === "y") {
+    event.preventDefault();
+    if (key === "y" || event.shiftKey) redoLastEdit(); else undoLastEdit();
+  }
+});
 globalThis.addEventListener?.("pagehide", saveDraft);
 
 boot();

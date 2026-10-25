@@ -5,7 +5,7 @@
   --surface-soft: #f8f9fb;
   --surface-strong: #eef1f4;
   --text: #171b22;
-  --muted: #697386;
+  --muted: #626d7f;
   --line: #d7dde5;
   --line-strong: #aeb8c5;
   --primary: #146b5f;
@@ -244,7 +244,7 @@ input[type="text"] {
 
 textarea::placeholder,
 input::placeholder {
-  color: #8a94a6;
+  color: var(--muted);
   opacity: 1;
 }
 
@@ -1059,3 +1059,6 @@ textarea { resize: vertical; max-height: 320px; }
   .app { padding: 8px; }
   .quality-strip span { font-size: 11px; }
 }
+
+summary:focus-visible, .candidate-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; scroll-behavior: auto !important; } }
