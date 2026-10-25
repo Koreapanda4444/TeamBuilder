@@ -981,3 +981,7 @@ select:focus-visible,
 .field select { min-height: 34px; max-width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 5px; }
 .quality-strip strong { color: var(--primary); }
 #generationProgress { width: 100%; accent-color: var(--primary); }
+
+.candidate-list { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 0; }
+.candidate-button { padding: 8px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-soft); color: var(--text); font-size: 12px; }
+.candidate-button[aria-pressed="true"] { border-color: var(--primary); background: #edf7f4; }

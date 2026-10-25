@@ -63,6 +63,8 @@ let lastCapacities = null;
 let resultInputSignature = null;
 let lastAudit = [];
 let lastQuality = null;
+let resultCandidates = [];
+let selectedCandidateId = null;
 let savedSettings = [];
 let activeSavedSettingId = null;
 let lockedAssignments = new Map();
@@ -482,11 +484,25 @@ async function computePlan(input, onProgress = reportSearchProgress) {
   } catch { return fallback(); }
 }
 
+function candidateFingerprint(result) {
+  return JSON.stringify({ plan: result.plan.map((group) => [...group].sort()), roles: result.roleAssignments?.map((group) => [...group].sort((a, b) => a.member.localeCompare(b.member))) || null });
+}
+
+function keepCandidate(candidates, result, seed, roll) {
+  if (!result.plan || !result.quality?.valid || candidates.some((item) => candidateFingerprint(item) === candidateFingerprint(result))) return;
+  candidates.push({ id: String(roll), plan: clonePlan(result.plan), roleAssignments: cloneRoleAssignments(result.roleAssignments), quality: { ...result.quality }, score: result.score, seed, roll });
+  candidates.sort((a, b) => a.score - b.score || a.roll - b.roll);
+  candidates.splice(5);
+}
+
 async function buildRolledPlan(input, onProgress = null) {
   const rollCount = input.rollCount || DEFAULT_ROLL_COUNT;
 
+  const candidates = [];
   if (rollCount <= 1) {
-    return computePlan(input);
+    const result = await computePlan(input);
+    keepCandidate(candidates, result, input.seed, 1);
+    return { ...result, candidates };
   }
 
   let bestResult = null;
@@ -514,6 +530,7 @@ async function buildRolledPlan(input, onProgress = null) {
       continue;
     }
 
+    keepCandidate(candidates, result, `${input.seed}:${rollIndex}`, rollIndex);
     successCount += 1;
     const score = Number.isFinite(result.score) ? result.score : getAttributeBalanceScore(result.plan, input.attributeRules, input.profiles, input.balanceWeights);
     const currentResult = {
@@ -540,6 +557,7 @@ async function buildRolledPlan(input, onProgress = null) {
 
     return {
       ...bestResult,
+      candidates,
       audit: [
         {
           type: "ok",
@@ -610,6 +628,7 @@ function createResultSnapshot() {
   }
 
   return {
+    selectedCandidateId,
     quality: lastQuality ? { ...lastQuality } : null,
     signature: resultInputSignature,
     audit: structuredClone(lastAudit),
@@ -656,6 +675,7 @@ function restoreResultSnapshot(snapshot) {
   lastCapacities = snapshot.capacities ? [...snapshot.capacities] : null;
   lockedAssignments = new Map(snapshot.locks);
   resultInputSignature = snapshot.signature;
+  selectedCandidateId = snapshot.selectedCandidateId ?? null;
   lastQuality = snapshot.quality ? { ...snapshot.quality } : null;
   lastAudit = structuredClone(snapshot.audit || []);
   renderGroups(lastPlan);
@@ -766,6 +786,7 @@ function applyManualPlan(plan, roles = lastRoleAssignments) {
   lastPlan = plan;
   lastRoleAssignments = roles;
   lastQuality = scoreAssignment(plan, input, roles);
+  selectedCandidateId = null;
   renderGroups(lastPlan);
   refreshAuditForCurrentPlan();
   refreshResultConsistency();
@@ -872,6 +893,25 @@ function applyWeightConfiguration() {
   } catch (error) { setStatus(error.message, "error"); }
 }
 
+function selectResultCandidate(id) {
+  if (!canUseResult()) return false;
+  const candidate = resultCandidates.find((item) => item.id === id);
+  if (!candidate || !applyManualPlan(clonePlan(candidate.plan), cloneRoleAssignments(candidate.roleAssignments))) return false;
+  selectedCandidateId = id; renderCandidates(); return true;
+}
+
+function renderCandidates() {
+  const list = document.querySelector("#resultCandidatesList"); list.replaceChildren();
+  resultCandidates.forEach((candidate, index) => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "candidate-button";
+    button.textContent = `후보 ${index + 1} · 전체 ${candidate.quality.total.toFixed(1)} · 균형 ${candidate.quality.balance.toFixed(1)} · 역할 ${candidate.quality.role.toFixed(1)}`;
+    button.setAttribute("aria-pressed", String(candidate.id === selectedCandidateId));
+    button.disabled = isGenerating || !isResultCurrent();
+    button.addEventListener("click", () => selectResultCandidate(candidate.id)); list.append(button);
+  });
+}
+
 function renderQuality() {
   qualityStrip.hidden = !lastQuality || !isResultCurrent();
   for (const [key, id] of [["total", "totalQuality"], ["balance", "balanceQuality"], ["role", "roleQuality"]]) document.querySelector(`#${id}`).textContent = lastQuality ? lastQuality[key].toFixed(1) : "—";
@@ -879,6 +919,7 @@ function renderQuality() {
 
 function renderGroups(plan, roleAssignments = lastRoleAssignments) {
   renderQuality();
+  renderCandidates();
   groupsGrid.innerHTML = "";
   emptyState.classList.toggle("is-hidden", Boolean(plan));
   updateUndoButtonState();
@@ -1090,6 +1131,7 @@ function updateCurrentSavedSetting() {
 }
 
 function loadSavedSetting(item) {
+  resultCandidates = []; selectedCandidateId = null;
   applyDraftSettings(item.settings);
   activeSavedSettingId = item.id;
   lastPlan = null;
@@ -1296,6 +1338,8 @@ async function generate() {
     lastPlan = result.plan;
     lastRoleAssignments = assignedRoles;
     lastQuality = result.quality || scoreAssignment(lastPlan, input, lastRoleAssignments);
+    resultCandidates = result.candidates || [];
+    selectedCandidateId = resultCandidates.find((item) => candidateFingerprint(item) === candidateFingerprint(result))?.id || null;
     lastCapacities = input.capacities ? [...input.capacities] : null;
     resultInputSignature = getInputSignature();
     lastAudit = result.audit;
@@ -1470,6 +1514,7 @@ function parseSettingsJSON(text) {
 }
 
 function restoreSettings(settings) {
+  resultCandidates = []; selectedCandidateId = null;
   applyDraftSettings(settings);
   activeSavedSettingId = null;
   savedSettingsNameInput.value = "";
@@ -1512,6 +1557,7 @@ async function importSettingsJSON(event) {
 }
 
 function reset() {
+  resultCandidates = []; selectedCandidateId = null;
   applyDraftSettings(null);
   rulesPanel.open = false;
   clearFieldValidity();
