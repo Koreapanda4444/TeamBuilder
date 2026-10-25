@@ -1459,6 +1459,22 @@ function moveMember(member, fromGroupIndex, toGroupIndex) {
   return true;
 }
 
+function swapMembers(member, other) {
+  if (isGenerating || !isResultCurrent() || member === other || isMemberProtected(member) || isMemberProtected(other)) return false;
+  const from = lastPlan.findIndex((group) => group.includes(member));
+  const to = lastPlan.findIndex((group) => group.includes(other));
+  if (from < 0 || to < 0 || from === to) return false;
+  const plan = clonePlan(lastPlan);
+  plan[from][plan[from].indexOf(member)] = other;
+  plan[to][plan[to].indexOf(other)] = member;
+  const roles = cloneRoleAssignments(lastRoleAssignments);
+  if (roles) {
+    roles[from].find((entry) => entry.member === member).member = other;
+    roles[to].find((entry) => entry.member === other).member = member;
+  }
+  return applyManualPlan(plan, roles);
+}
+
 function renderGroups(plan, roleAssignments = lastRoleAssignments) {
   groupsGrid.innerHTML = "";
   emptyState.classList.toggle("is-hidden", Boolean(plan));
@@ -1523,7 +1539,24 @@ function renderGroups(plan, roleAssignments = lastRoleAssignments) {
       lockButton.setAttribute("aria-label", locked ? `${member} 고정 해제` : `${member} 현재 그룹에 고정`);
       lockButton.addEventListener("click", () => toggleMemberLock(member, index));
 
-      actions.append(moveSelect, lockButton);
+      const swapSelect = document.createElement("select");
+      swapSelect.className = "member-move-select";
+      swapSelect.setAttribute("aria-label", `${member} 교환 상대`);
+      const placeholder = document.createElement("option");
+      placeholder.value = ""; placeholder.textContent = "교환 상대";
+      swapSelect.append(placeholder);
+      plan.forEach((group, targetIndex) => {
+        if (targetIndex === index) return;
+        group.forEach((other) => {
+          const option = document.createElement("option");
+          option.value = other; option.textContent = `${groupNames[targetIndex]}: ${other}`;
+          option.disabled = isMemberProtected(other);
+          swapSelect.append(option);
+        });
+      });
+      swapSelect.disabled = isGenerating || !isResultCurrent() || isMemberProtected(member);
+      swapSelect.addEventListener("change", () => { swapMembers(member, swapSelect.value); renderGroups(lastPlan); });
+      actions.append(moveSelect, swapSelect, lockButton);
       item.append(name, actions);
       list.append(item);
     });
