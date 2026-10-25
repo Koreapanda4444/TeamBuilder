@@ -46,6 +46,7 @@ const savedSettingsNameInput = document.querySelector("#savedSettingsNameInput")
 
 let participantRecords = null;
 let balanceWeights = {};
+let rolePreferenceWeight = 1;
 let lastPlan = null;
 let lastRoleAssignments = null;
 let lastCapacities = null;
@@ -245,6 +246,7 @@ function getDraftSettings() {
   return {
     maxMs: searchTimeInput.value,
     maxOperations: searchOperationsInput.value,
+    rolePreferenceWeight,
     balanceWeights: { ...balanceWeights },
     seed: seedInput.value,
     participants: participantsInput.value,
@@ -264,6 +266,7 @@ function getDraftSettings() {
 
 function applyDraftSettings(settings) {
   balanceWeights = normalizeBalanceWeights(settings?.balanceWeights || {});
+  rolePreferenceWeight = settings?.rolePreferenceWeight ?? 1;
   seedInput.value = settings?.seed || "";
   searchTimeInput.value = settings?.maxMs || "3000";
   searchOperationsInput.value = settings?.maxOperations || "1000000";
@@ -409,6 +412,7 @@ function getInputs() {
     separateRules: separate.rules,
     fixedRules: fixed.rules,
     attributeRules: attributes.rules,
+    rolePreferenceWeight,
     balanceWeights: { ...balanceWeights },
     profiles: createParticipantProfiles(participants, participantRecords, attributes.rules),
     duplicateCount,
@@ -1366,6 +1370,8 @@ function parseSettingsJSON(text) {
   if (source.twoStage !== undefined && typeof source.twoStage !== "boolean") throw new Error("JSON 2단계 배정 설정의 형식을 확인하세요.");
   settings.twoStage = source.twoStage === true;
   settings.balanceWeights = normalizeBalanceWeights(source.balanceWeights ?? {});
+  if (source.rolePreferenceWeight !== undefined && (typeof source.rolePreferenceWeight !== "number" || !Number.isFinite(source.rolePreferenceWeight) || source.rolePreferenceWeight < 0 || source.rolePreferenceWeight > 100)) throw new Error("역할 선호 가중치를 확인하세요.");
+  settings.rolePreferenceWeight = source.rolePreferenceWeight ?? 1;
   settings.participantRecords = null;
   if (source.participantRecords != null) {
     if (!Array.isArray(source.participantRecords) || source.participantRecords.some((record) => !record || typeof record.name !== "string" || !record.name.trim() || (record.role !== undefined && typeof record.role !== "string"))) {

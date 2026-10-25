@@ -800,6 +800,7 @@ function buildPlan(input, options = {}) {
     return { ...result, status: result.status || (result.error ? "impossible" : "success"), search: { nodes: search.nodes, operations: search.operations } };
   } catch (error) {
     if (!(error instanceof SearchLimitError)) throw error;
+    if (search.bestResult) return { ...search.bestResult, status: "success", searchLimited: true, search: { nodes: search.nodes, operations: search.operations } };
     return { status: "limit", error: error.message, audit: [{ type: "warning", title: "탐색 한계", detail: error.message }], search: { nodes: search.nodes, operations: search.operations } };
   }
 }
@@ -866,11 +867,14 @@ function searchPlan(input, search) {
     if (!plan) rejectedCapacities.add(capacityKey);
 
     if (plan) {
-      const score = getAttributeBalanceScore(plan, input.attributeRules, input.profiles, input.balanceWeights);
+      const candidateRoles = input.twoStage ? plan.map((group) => optimizeRoleMatching(group, input)) : null;
+      if (candidateRoles?.some((roles) => !roles)) continue;
+      const score = getAttributeBalanceScore(plan, input.attributeRules, input.profiles, input.balanceWeights) + getRolePreferencePenalty(candidateRoles, input.profiles) * (input.rolePreferenceWeight ?? 1);
 
       if (score < bestScore) {
         bestPlan = plan;
-        bestRoles = input.twoStage ? plan.map((group) => findRoleMatching(group, input)) : null;
+        bestRoles = candidateRoles;
+        search.bestResult = { plan, roleAssignments: bestRoles, score, audit: validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules) };
         bestScore = score;
       }
 
@@ -938,6 +942,57 @@ function validateRoleConfiguration(input) {
 function validateRoleFeasibility(input) {
   if (!input.twoStage) return [];
   return findRoleMatching(input.participants, input, input.groupCount) ? [] : ["역할 제한 때문에 필수 역할과 참가자를 모두 배정할 수 없습니다."];
+}
+
+function rolePreferenceCost(profile, role) {
+  const preferences = profile?.preferences || [];
+  if (!preferences.length) return 0;
+  const rank = preferences.indexOf(role);
+  return rank < 0 ? 1 : rank / preferences.length;
+}
+
+function optimizeRoleMatching(members, input) {
+  const roles = input.roles, size = roles.length;
+  if (members.length > size) return null;
+  const byName = new Map((input.profiles || []).map((profile) => [profile.name, profile]));
+  const required = new Set(input.requiredRoles || roles), blocked = 1000000;
+  const cost = Array.from({ length: size }, (_, index) => roles.map((role) => index >= members.length ? (required.has(role) ? blocked : 0) : (canAssignRole(byName.get(members[index]), role) ? rolePreferenceCost(byName.get(members[index]), role) : blocked)));
+  const u = Array(size + 1).fill(0), v = Array(size + 1).fill(0), owner = Array(size + 1).fill(0), way = Array(size + 1).fill(0);
+  for (let row = 1; row <= size; row += 1) {
+    owner[0] = row;
+    let column = 0;
+    const distance = Array(size + 1).fill(Infinity), used = Array(size + 1).fill(false);
+    do {
+      used[column] = true;
+      const current = owner[column];
+      let delta = Infinity, next = 0;
+      for (let candidate = 1; candidate <= size; candidate += 1) if (!used[candidate]) {
+        const value = cost[current - 1][candidate - 1] - u[current] - v[candidate];
+        if (value < distance[candidate]) { distance[candidate] = value; way[candidate] = column; }
+        if (distance[candidate] < delta) { delta = distance[candidate]; next = candidate; }
+      }
+      for (let candidate = 0; candidate <= size; candidate += 1) {
+        if (used[candidate]) { u[owner[candidate]] += delta; v[candidate] -= delta; }
+        else distance[candidate] -= delta;
+      }
+      column = next;
+    } while (owner[column]);
+    do { const previous = way[column]; owner[column] = owner[previous]; column = previous; } while (column);
+  }
+  const result = [];
+  for (let column = 1; column <= size; column += 1) {
+    const index = owner[column] - 1;
+    if (cost[index][column - 1] >= blocked) return null;
+    if (index < members.length) result.push({ member: members[index], role: roles[column - 1] });
+  }
+  return result;
+}
+
+function getRolePreferencePenalty(assignments, profiles = []) {
+  if (!assignments) return 0;
+  const byName = new Map(profiles.map((profile) => [profile.name, profile]));
+  const entries = assignments.flat().filter((entry) => byName.get(entry.member)?.preferences?.length);
+  return entries.length ? entries.reduce((sum, entry) => sum + rolePreferenceCost(byName.get(entry.member), entry.role), 0) / entries.length : 0;
 }
 
 function canAssignRole(profile, role) {
