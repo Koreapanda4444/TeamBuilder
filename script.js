@@ -504,21 +504,30 @@ async function computePlan(input, onProgress = reportSearchProgress) {
   const fallback = async () => {
     await waitForResultPaint();
     if (generationCancelled) return cancelledResult();
-    return buildPlan({ ...input, maxMs: Math.min(input.maxMs || 3000, 150), maxOperations: Math.min(input.maxOperations || 1000000, 20000) }, { onProgress });
+    const cancel = () => { generationCancelled = true; };
+    cancelActiveComputation = cancel;
+    try { return await buildPlanAsync(input, { onProgress, shouldCancel: () => generationCancelled }); }
+    finally { if (cancelActiveComputation === cancel) cancelActiveComputation = null; }
   };
   if (typeof Worker === "undefined") return fallback();
   try {
     return await new Promise((resolve, reject) => {
       const worker = new Worker(new URL("assignment-worker.js", document.baseURI));
+      let settled = false;
       activeWorker = worker;
       const cleanup = () => { worker.terminate(); if (activeWorker === worker) { activeWorker = null; cancelActiveComputation = null; } };
-      cancelActiveComputation = () => { cleanup(); resolve(cancelledResult()); };
+      const finish = (callback, value) => { if (settled) return; settled = true; cleanup(); callback(value); };
+      const fail = (event) => { event?.preventDefault?.(); finish(generationCancelled ? resolve : reject, generationCancelled ? cancelledResult() : new Error("Worker unavailable")); };
+      cancelActiveComputation = () => finish(resolve, cancelledResult());
       worker.onmessage = ({ data }) => {
-        if (data.type === "progress") { onProgress?.(data.progress); return; }
-        cleanup(); resolve(data.result);
+        if (settled) return;
+        if (data?.type === "progress") { onProgress?.(data.progress); return; }
+        if (data?.type !== "result" || !data.result || typeof data.result.status !== "string") { fail(); return; }
+        finish(resolve, data.result);
       };
-      worker.onerror = () => { cleanup(); reject(new Error("Worker unavailable")); };
-      try { worker.postMessage(input); } catch (error) { cleanup(); reject(error); }
+      worker.onerror = fail;
+      worker.onmessageerror = fail;
+      try { worker.postMessage(input); } catch (error) { finish(reject, error); }
     });
   } catch { return fallback(); }
 }

@@ -604,13 +604,13 @@ function hasSeparationConflict(group, component, graph) {
   return false;
 }
 
-function assignComponents(components, groupCount, targetSizes, separatedPairs, fixedTargets, search, input) {
+function* assignComponentsSteps(components, groupCount, targetSizes, separatedPairs, fixedTargets, search, input) {
   const graph = createSeparationGraph(separatedPairs);
   const groups = Array.from({ length: groupCount }, (_, id) => ({ id, targetSize: targetSizes[id], members: [], components: [], componentIds: new Set() }));
   if (!input.twoStage && !separatedPairs.length && components.every((component) => component.size === 1)) {
     const free = [];
     for (const component of components) {
-      checkSearchBudget(search);
+      yield* searchCheckpoint(search);
       if (!fixedTargets.has(component.id)) { free.push(component.members[0]); continue; }
       const group = groups[fixedTargets.get(component.id)];
       if (!group || group.members.length >= group.targetSize) return null;
@@ -618,20 +618,26 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
     }
     const remaining = shuffle(free);
     for (const group of shuffle(groups)) while (group.members.length < group.targetSize) {
-      checkSearchBudget(search); if (!remaining.length) return null; group.members.push(remaining.pop());
+      yield* searchCheckpoint(search); if (!remaining.length) return null; group.members.push(remaining.pop());
     }
     return remaining.length ? null : groups.map((group) => shuffle(group.members));
   }
   const failedStates = new Set();
   const fixedGroups = new Set(fixedTargets.values());
   const pending = shuffle(components).sort((a, b) => b.size - a.size);
-  function domain(component) {
-    checkSearchBudget(search, groups.length);
-    const fixed = fixedTargets.get(component.id);
-    return groups.filter((group) => (fixed === undefined || fixed === group.id) && group.members.length + component.size <= group.targetSize && !hasSeparationConflict(group, component, graph) && (!input.twoStage || findRoleMatching([...group.members, ...component.members], input, 1, true, search) !== null));
+  function* domain(component) {
+    yield* searchCheckpoint(search, groups.length);
+    const fixed = fixedTargets.get(component.id), choices = [];
+    for (const group of groups) {
+      if ((fixed !== undefined && fixed !== group.id) || group.members.length + component.size > group.targetSize || hasSeparationConflict(group, component, graph)) continue;
+      if (input.twoStage && (yield* findRoleMatchingSteps([...group.members, ...component.members], input, 1, true, search)) === null) continue;
+      choices.push(group);
+    }
+    return choices;
   }
-  function forwardCheck() {
-    const domains = pending.map((component) => ({ component, choices: domain(component) }));
+  function* forwardCheck() {
+    const domains = [];
+    for (const component of pending) domains.push({ component, choices: yield* domain(component) });
     if (domains.some((item) => item.choices.length === 0)) return false;
     return groups.every((group) => {
       const space = group.targetSize - group.members.length;
@@ -642,36 +648,39 @@ function assignComponents(components, groupCount, targetSizes, separatedPairs, f
       return possible >= space && forced <= space;
     });
   }
-  function place() {
+  function* place() {
     search.nodes += 1;
-    checkSearchBudget(search);
-    if (!pending.length) return groups.every((group) => group.members.length === group.targetSize && (!input.twoStage || findRoleMatching(group.members, input, 1, false, search) !== null));
+    yield* searchCheckpoint(search);
+    if (!pending.length) {
+      for (const group of groups) {
+        if (group.members.length !== group.targetSize || (input.twoStage && (yield* findRoleMatchingSteps(group.members, input, 1, false, search)) === null)) return false;
+      }
+      return true;
+    }
     const stateKey = groups.map((group) => [...group.componentIds].sort((a, b) => a - b).join(",")).join("|");
     if (failedStates.has(stateKey)) return false;
-    let selected = 0;
-    let candidates = null;
+    let selected = 0, candidates = null;
     for (let index = 0; index < pending.length; index += 1) {
-      const choices = domain(pending[index]);
+      const choices = yield* domain(pending[index]);
       if (!choices.length) return false;
       if (!candidates || choices.length < candidates.length) { selected = index; candidates = choices; }
       if (candidates.length === 1) break;
     }
-    const [component] = pending.splice(selected, 1);
-    const emptySizes = new Set();
+    const [component] = pending.splice(selected, 1), emptySizes = new Set();
     for (const group of shuffle(candidates)) {
       if (!group.members.length && !fixedGroups.has(group.id)) {
         if (emptySizes.has(group.targetSize)) continue;
         emptySizes.add(group.targetSize);
       }
       group.components.push(component); group.componentIds.add(component.id); group.members.push(...component.members);
-      if (forwardCheck() && place()) return true;
+      if ((yield* forwardCheck()) && (yield* place())) return true;
       group.components.pop(); group.componentIds.delete(component.id); group.members.splice(group.members.length - component.size, component.size);
     }
     pending.splice(selected, 0, component);
     if (failedStates.size < 20000) failedStates.add(stateKey);
     return false;
   }
-  return place() ? groups.map((group) => shuffle(group.members)) : null;
+  return (yield* place()) ? groups.map((group) => shuffle(group.members)) : null;
 }
 
 function getAttributeDistributions(plan, profiles) {
@@ -784,7 +793,10 @@ class SearchLimitError extends Error {
   constructor(message, reason) { super(message); this.reason = reason; }
 }
 
+class SearchCancelledError extends Error {}
+
 function checkSearchBudget(search, operations = 1) {
+  if (search.shouldCancel?.()) throw new SearchCancelledError("배정을 취소했습니다.");
   search.operations += operations;
   const reason = search.operations > search.maxOperations ? "operations" : performance.now() - search.start >= search.maxMs ? "time" : null;
   if (reason) throw new SearchLimitError("탐색 한계에 도달했습니다. 불가능이 증명된 것은 아닙니다.", reason);
@@ -816,18 +828,19 @@ function finalizeSearchResult(result, input, search, searchLimited = false) {
   return { ...result, status: "success", quality, searchLimited, search: stats };
 }
 
-function buildPlan(input, options = {}) {
+function* buildPlanSteps(input, options = {}) {
   if (input.errors?.length) return { status: "invalid", error: input.errors[0], audit: input.errors.map((detail) => ({ type: "error", title: "입력 오류", detail })) };
   const roleErrors = validateRoleConfiguration(input);
   if (roleErrors.length) return { status: "invalid", error: roleErrors[0], audit: roleErrors.map((detail) => ({ type: "error", title: "역할 설정 오류", detail })) };
-  const search = { nodes: 0, operations: 0, start: performance.now(), lastProgress: 0, maxMs: input.maxMs ?? 3000, maxOperations: input.maxOperations ?? 1000000, onProgress: options.onProgress };
+  const search = { nodes: 0, operations: 0, start: performance.now(), lastProgress: 0, maxMs: input.maxMs ?? 3000, maxOperations: input.maxOperations ?? 1000000, onProgress: options.onProgress, shouldCancel: options.shouldCancel };
   if (!Number.isFinite(search.maxMs) || search.maxMs <= 0 || !Number.isSafeInteger(search.maxOperations) || search.maxOperations <= 0) return { status: "invalid", error: "탐색 제한을 확인하세요.", audit: [{ type: "error", title: "입력 확인", detail: "탐색 제한을 확인하세요." }] };
   try {
-    const roleFeasibility = validateRoleFeasibility(input, search);
+    const roleFeasibility = yield* validateRoleFeasibilitySteps(input, search);
     if (roleFeasibility.length) return { status: "impossible", error: roleFeasibility[0], audit: roleFeasibility.map((detail) => ({ type: "error", title: "역할 충돌", detail })) };
-    const result = searchPlan(input, search);
+    const result = yield* searchPlanSteps(input, search);
     return finalizeSearchResult(result, input, search);
   } catch (error) {
+    if (error instanceof SearchCancelledError) return { status: "cancelled", error: "배정을 취소했습니다.", audit: [] };
     if (!(error instanceof SearchLimitError)) throw error;
     if (search.bestResult) {
       return { ...finalizeSearchResult({ ...search.bestResult, audit: [...search.bestResult.audit, { type: "warning", title: "탐색 한계", detail: error.message }] }, input, search, true), limitReason: error.reason };
@@ -836,7 +849,7 @@ function buildPlan(input, options = {}) {
   }
 }
 
-function searchPlan(input, search) {
+function* searchPlanSteps(input, search) {
   engineRandom = createSeededRandom(input.seed ?? "TeamBuilder");
   const components = createComponents(input.participants, input.togetherRules);
   const maxTargetSize = input.capacities ? Math.max(...input.capacities) : Math.ceil(input.participants.length / input.groupCount);
@@ -888,17 +901,18 @@ function searchPlan(input, search) {
   let layoutExhausted = false;
 
   for (let attempt = 0; attempt < input.attempts; attempt += 1) {
-    checkSearchBudget(search);
+    yield* searchCheckpoint(search);
     const next = layouts.next();
     if (next.done) { layoutExhausted = true; if (!bestPlan) break; }
     const targetSizes = next.done ? (input.capacities || getTargetSizes(input.participants.length, input.groupCount)) : next.value;
     const capacityKey = targetSizes.join(",");
     if (rejectedCapacities.has(capacityKey)) continue;
-    const plan = assignComponents(components, input.groupCount, targetSizes, separated.pairs, fixed.targets, search, input);
+    const plan = yield* assignComponentsSteps(components, input.groupCount, targetSizes, separated.pairs, fixed.targets, search, input);
     if (!plan) rejectedCapacities.add(capacityKey);
 
     if (plan) {
-      const candidateRoles = input.twoStage ? plan.map((group) => optimizeRoleMatching(group, input, search)) : null;
+      const candidateRoles = input.twoStage ? [] : null;
+      if (input.twoStage) for (const group of plan) candidateRoles.push(yield* optimizeRoleMatchingSteps(group, input, search));
       if (candidateRoles?.some((roles) => !roles)) continue;
       const score = getAttributeBalanceScore(plan, input.attributeRules, input.profiles, input.balanceWeights) + getRolePreferencePenalty(candidateRoles, input.profiles) * (input.rolePreferenceWeight ?? 1);
 
@@ -939,24 +953,25 @@ function searchPlan(input, search) {
   };
 }
 
-function findRoleMatching(members, input, copies = 1, partial = false, search = null) {
+function* findRoleMatchingSteps(members, input, copies = 1, partial = false, search = null) {
   const profiles = new Map((input.profiles || []).map((profile) => [profile.name, profile]));
   const required = new Set(input.requiredRoles || input.roles);
   const slots = input.roles.flatMap((role) => Array.from({ length: copies }, () => ({ role, required: required.has(role) })));
   if (members.length > slots.length) return null;
-  const nodes = members.map((member) => {
-    if (search) checkSearchBudget(search, slots.length);
-    return { member, choices: slots.flatMap((slot, index) => canAssignRole(profiles.get(member), slot.role) ? [index] : []) };
-  });
+  const nodes = [];
+  for (const member of members) {
+    if (search) yield* searchCheckpoint(search, slots.length);
+    nodes.push({ member, choices: slots.flatMap((slot, index) => canAssignRole(profiles.get(member), slot.role) ? [index] : []) });
+  }
   const optional = slots.flatMap((slot, index) => slot.required ? [] : [index]);
   if (!partial) for (let index = members.length; index < slots.length; index += 1) nodes.push({ member: null, choices: optional });
   nodes.sort((a, b) => a.choices.length - b.choices.length);
   const owner = new Map();
-  function augment(root) {
+  function* augment(root) {
     const queue = [root], parents = new Map(), seenNodes = new Set([root]), seenSlots = new Set();
     for (let head = 0; head < queue.length; head += 1) {
       const node = queue[head];
-      if (search) checkSearchBudget(search, nodes[node].choices.length);
+      if (search) yield* searchCheckpoint(search, nodes[node].choices.length);
       for (const slot of nodes[node].choices) {
         if (seenSlots.has(slot)) continue;
         seenSlots.add(slot);
@@ -975,7 +990,7 @@ function findRoleMatching(members, input, copies = 1, partial = false, search = 
     }
     return false;
   }
-  for (let index = 0; index < nodes.length; index += 1) if (!augment(index)) return null;
+  for (let index = 0; index < nodes.length; index += 1) if (!(yield* augment(index))) return null;
   return [...owner].sort(([a], [b]) => a - b).flatMap(([slot, node]) => nodes[node].member === null ? [] : [{ member: nodes[node].member, role: slots[slot].role }]);
 }
 
@@ -990,9 +1005,9 @@ function validateRoleConfiguration(input) {
   return errors;
 }
 
-function validateRoleFeasibility(input, search = null) {
+function* validateRoleFeasibilitySteps(input, search = null) {
   if (!input.twoStage) return [];
-  return findRoleMatching(input.participants, input, input.groupCount, false, search) ? [] : ["역할 제한 때문에 필수 역할과 참가자를 모두 배정할 수 없습니다."];
+  return (yield* findRoleMatchingSteps(input.participants, input, input.groupCount, false, search)) ? [] : ["역할 제한 때문에 필수 역할과 참가자를 모두 배정할 수 없습니다."];
 }
 
 function rolePreferenceCost(profile, role) {
@@ -1002,7 +1017,7 @@ function rolePreferenceCost(profile, role) {
   return rank < 0 ? 1 : rank / preferences.length;
 }
 
-function optimizeRoleMatching(members, input, search = null) {
+function* optimizeRoleMatchingSteps(members, input, search = null) {
   const roles = input.roles, size = roles.length;
   if (members.length > size) return null;
   const byName = new Map((input.profiles || []).map((profile) => [profile.name, profile]));
@@ -1010,7 +1025,7 @@ function optimizeRoleMatching(members, input, search = null) {
   const cost = Array.from({ length: size }, (_, index) => roles.map((role) => index >= members.length ? (required.has(role) ? blocked : 0) : (canAssignRole(byName.get(members[index]), role) ? rolePreferenceCost(byName.get(members[index]), role) : blocked)));
   const u = Array(size + 1).fill(0), v = Array(size + 1).fill(0), owner = Array(size + 1).fill(0), way = Array(size + 1).fill(0);
   for (let row = 1; row <= size; row += 1) {
-    if (search) checkSearchBudget(search, size * size);
+    if (search) yield* searchCheckpoint(search, size * size);
     owner[0] = row;
     let column = 0;
     const distance = Array(size + 1).fill(Infinity), used = Array(size + 1).fill(false);
@@ -1076,4 +1091,38 @@ function validateAssignmentResult(plan, input, roleAssignments = null, checkRole
   });
   errors.push(...validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules).filter((item) => item.type === "error").map((item) => item.detail));
   return errors;
+}
+
+
+function* searchCheckpoint(search, operations = 1) {
+  checkSearchBudget(search, operations);
+  yield;
+}
+
+function completeSearch(iterator) {
+  let step;
+  do { step = iterator.next(); } while (!step.done);
+  return step.value;
+}
+
+function buildPlan(input, options = {}) { return completeSearch(buildPlanSteps(input, options)); }
+function searchPlan(input, search) { return completeSearch(searchPlanSteps(input, search)); }
+function assignComponents(...args) { return completeSearch(assignComponentsSteps(...args)); }
+function findRoleMatching(...args) { return completeSearch(findRoleMatchingSteps(...args)); }
+function optimizeRoleMatching(...args) { return completeSearch(optimizeRoleMatchingSteps(...args)); }
+function validateRoleFeasibility(...args) { return completeSearch(validateRoleFeasibilitySteps(...args)); }
+
+async function buildPlanAsync(input, options = {}) {
+  const iterator = buildPlanSteps(input, options);
+  let sliceStarted = performance.now();
+  try {
+    for (;;) {
+      const step = iterator.next();
+      if (step.done) return step.value;
+      if (performance.now() - sliceStarted >= 8) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        sliceStarted = performance.now();
+      }
+    }
+  } finally { iterator.return(); }
 }
