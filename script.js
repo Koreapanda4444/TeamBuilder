@@ -93,6 +93,8 @@ const MAX_ROLL_COUNT = 30;
 const MAX_EDIT_HISTORY = 20;
 const SAVED_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v2";
 const LEGACY_SETTINGS_STORAGE_KEY = "teambuilder.savedSettings.v1";
+const SETTINGS_RECOVERY_KEY = "teambuilder.savedSettings.recovery";
+let settingsRecoverySources = [];
 
 function getParticipantNames(value = participantsInput.value, records = participantRecords) {
   if (!records) return splitParticipants(value);
@@ -323,18 +325,26 @@ function applyDraftSettings(settings) {
   syncTwoStageControls();
 }
 
-function persistSavedSettings() {
+function persistSavedSettings(nextSettings = savedSettings) {
   const storage = getStorage();
-
-  if (!storage) {
-    setStatus("브라우저 저장소를 사용할 수 없습니다.", "error");
-    return;
-  }
-
+  if (!storage) { setStatus("브라우저 저장소를 사용할 수 없습니다.", "error"); return false; }
   try {
-    storage.setItem(SAVED_SETTINGS_STORAGE_KEY, JSON.stringify(savedSettings));
+    if (settingsRecoverySources.length) {
+      const previous = JSON.parse(storage.getItem(SETTINGS_RECOVERY_KEY) || "[]");
+      if (!Array.isArray(previous)) throw new Error("Invalid recovery archive");
+      const archive = [...previous];
+      for (const source of settingsRecoverySources) {
+        if (!archive.some((entry) => entry.key === source.key && entry.raw === source.raw)) archive.push(source);
+      }
+      storage.setItem(SETTINGS_RECOVERY_KEY, JSON.stringify(archive));
+    }
+    storage.setItem(SAVED_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
+    savedSettings = nextSettings;
+    settingsRecoverySources = [];
+    return true;
   } catch {
-    setStatus("저장값을 저장하지 못했습니다.", "error");
+    setStatus("저장값을 저장하지 못했습니다. 기존 저장값은 유지됩니다.", "error");
+    return false;
   }
 }
 
@@ -351,25 +361,35 @@ function createSavedSettingId() {
 }
 
 function loadSavedSettings() {
+  savedSettings = [];
+  settingsRecoverySources = [];
   const storage = getStorage();
-
-  if (!storage) {
-    savedSettings = [];
-    return;
-  }
-
-  try {
-    const raw = storage.getItem(SAVED_SETTINGS_STORAGE_KEY) || storage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    savedSettings = Array.isArray(parsed) ? parsed.flatMap((item) => {
-      try {
-        const id = normalizeSavedSettingId(item?.id);
-        if (id === null || typeof item.name !== "string") return [];
-        return [{ ...item, id, settings: parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: item.settings })) }];
-      } catch { return []; }
-    }) : [];
-  } catch {
-    savedSettings = [];
+  if (!storage) return;
+  const used = new Set();
+  for (const key of [SAVED_SETTINGS_STORAGE_KEY, LEGACY_SETTINGS_STORAGE_KEY]) {
+    let raw;
+    try {
+      raw = storage.getItem(key);
+      if (raw === null) continue;
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) throw new Error("Invalid settings list");
+      let migrated = key === LEGACY_SETTINGS_STORAGE_KEY;
+      for (const [index, item] of parsed.entries()) {
+        try {
+          let id = normalizeSavedSettingId(item?.id);
+          if (id === null || typeof item.name !== "string") throw new Error("Invalid saved entry");
+          const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 2, settings: item.settings, ...(item.locks === undefined ? {} : { locks: item.locks }) }));
+          if (used.has(id)) { const base = id; let suffix = index; do { id = `${base}:migrated:${suffix++}`; } while (used.has(id)); migrated = true; }
+          used.add(id);
+          migrated ||= typeof item.id !== "string" || !Object.hasOwn(item.settings, "locks");
+          savedSettings.push({ ...item, id, settings });
+        } catch { migrated = true; }
+      }
+      if (migrated) settingsRecoverySources.push({ key, raw });
+      return;
+    } catch {
+      if (typeof raw === "string") settingsRecoverySources.push({ key, raw });
+    }
   }
 }
 
@@ -1293,12 +1313,10 @@ function saveCurrentSettings() {
     settings,
   };
 
-  savedSettings.unshift(item);
-
-  savedSettings = savedSettings.slice(0, 12);
+  if (savedSettings.length >= 12) { setStatus("저장값은 12개까지 추가할 수 있습니다. 필요 없는 저장값을 삭제한 뒤 다시 저장하세요.", "error"); return false; }
+  if (!persistSavedSettings([item, ...savedSettings])) return false;
   activeSavedSettingId = item.id;
   savedSettingsNameInput.value = "";
-  persistSavedSettings();
   renderSavedSettings();
   setStatus("현재 입력값을 저장했습니다.", "success");
 }
@@ -1321,14 +1339,9 @@ function updateCurrentSavedSetting() {
   }
 
   const nextName = savedSettingsNameInput.value.trim();
-
-  if (nextName) {
-    item.name = nextName;
-    savedSettingsNameInput.value = "";
-  }
-
-  item.settings = settings;
-  persistSavedSettings();
+  const next = savedSettings.map((entry) => entry.id === item.id ? { ...entry, name: nextName || entry.name, settings } : entry);
+  if (!persistSavedSettings(next)) return false;
+  if (nextName) savedSettingsNameInput.value = "";
   renderSavedSettings();
   setStatus("저장값을 갱신했습니다.", "success");
 }
@@ -1357,11 +1370,8 @@ function loadSavedSetting(item) {
 }
 
 function deleteSavedSetting(id) {
-  savedSettings = savedSettings.filter((item) => item.id !== id);
-  if (activeSavedSettingId === id) {
-    activeSavedSettingId = null;
-  }
-  persistSavedSettings();
+  if (!persistSavedSettings(savedSettings.filter((item) => item.id !== id))) return false;
+  if (activeSavedSettingId === id) activeSavedSettingId = null;
   renderSavedSettings();
   setStatus("저장값을 삭제했습니다.", "success");
 }
@@ -1394,8 +1404,7 @@ function renameSavedSetting(id, nextName = null) {
     return;
   }
 
-  item.name = trimmed;
-  persistSavedSettings();
+  if (!persistSavedSettings(savedSettings.map((entry) => entry.id === id ? { ...entry, name: trimmed } : entry))) return false;
   renderSavedSettings();
   setStatus("저장값 이름을 수정했습니다.", "success");
 }
