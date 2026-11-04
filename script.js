@@ -140,7 +140,8 @@ function setResultState(text, type = "default") {
 }
 
 function getInputSignature() {
-  return JSON.stringify(getDraftSettings());
+  const { locks, ...settings } = getDraftSettings();
+  return JSON.stringify(settings);
 }
 
 function isResultCurrent() {
@@ -297,6 +298,7 @@ function getDraftSettings() {
     attributes: attributesInput.value,
     twoStage: twoStageInput.checked,
     roles: rolesInput.value,
+    locks: [...lockedAssignments].map(([member, groupIndex]) => [member, groupIndex]),
   };
 }
 
