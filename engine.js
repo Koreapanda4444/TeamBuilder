@@ -829,7 +829,9 @@ function buildPlan(input, options = {}) {
     return finalizeSearchResult(result, input, search);
   } catch (error) {
     if (!(error instanceof SearchLimitError)) throw error;
-    if (search.bestResult && error.reason === "operations") return finalizeSearchResult(search.bestResult, input, search, true);
+    if (search.bestResult) {
+      return { ...finalizeSearchResult({ ...search.bestResult, audit: [...search.bestResult.audit, { type: "warning", title: "탐색 한계", detail: error.message }] }, input, search, true), limitReason: error.reason };
+    }
     return { status: "limit", limitReason: error.reason, error: error.message, audit: [{ type: "warning", title: "탐색 한계", detail: error.message }], search: { nodes: search.nodes, operations: search.operations } };
   }
 }

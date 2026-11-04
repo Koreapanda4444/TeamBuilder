@@ -1570,7 +1570,7 @@ async function generate() {
         : `${input.participants.length}명을 ${input.groupCount}개 그룹으로 배정했습니다.`,
       "success",
     );
-    if (result.searchLimited) setStatus("탐색 연산 한계 안에서 찾은 유효한 결과입니다. 가중치 최적화는 더 진행할 수 있습니다.", "success");
+    if (result.searchLimited) setStatus("탐색 제한 안에서 찾은 유효한 결과입니다. 가중치 최적화는 더 진행할 수 있습니다.", "success");
     recordResultHistory(); saveDraft();
   } catch (error) {
     if (previousResult) restoreResultSnapshot(previousResult);
