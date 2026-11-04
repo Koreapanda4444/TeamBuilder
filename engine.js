@@ -953,17 +953,61 @@ function* searchPlanSteps(input, search) {
   };
 }
 
-function* findRoleMatchingSteps(members, input, copies = 1, partial = false, search = null) {
+function createRoleContext(input) {
   const profiles = new Map((input.profiles || []).map((profile) => [profile.name, profile]));
-  const required = new Set(input.requiredRoles || input.roles);
-  const slots = input.roles.flatMap((role) => Array.from({ length: copies }, () => ({ role, required: required.has(role) })));
+  const required = new Set(input.requiredRoles || input.roles), choices = new Map(), costs = new Map(), layouts = new Map();
+  return {
+    input, profiles, required, matching: new Map(), optimized: new Map(),
+    choices(member) {
+      if (!choices.has(member)) choices.set(member, input.roles.flatMap((role, index) => canAssignRole(profiles.get(member), role) ? [index] : []));
+      return choices.get(member);
+    },
+    costs(member) {
+      if (!costs.has(member)) {
+        const allowed = new Set(this.choices(member));
+        costs.set(member, input.roles.map((role, index) => allowed.has(index) ? rolePreferenceCost(profiles.get(member), role) : 1000000));
+      }
+      return costs.get(member);
+    },
+    layout(copies) {
+      if (!layouts.has(copies)) {
+        const slots = input.roles.flatMap((role) => Array.from({ length: copies }, () => ({ role, required: required.has(role) })));
+        layouts.set(copies, { slots, optional: slots.flatMap((slot, index) => slot.required ? [] : [index]) });
+      }
+      return layouts.get(copies);
+    },
+  };
+}
+
+function getRoleContext(input, search) {
+  if (!search) return createRoleContext(input);
+  if (search.roleContext?.input !== input) search.roleContext = createRoleContext(input);
+  return search.roleContext;
+}
+
+function cacheRoleResult(cache, key, result) {
+  if (key === null) return result;
+  if (cache.size >= 1024) cache.delete(cache.keys().next().value);
+  cache.set(key, result === null ? null : result.map((entry) => ({ ...entry })));
+  return result;
+}
+
+function copyRoleResult(result) { return result === null ? null : result.map((entry) => ({ ...entry })); }
+
+function* findRoleMatchingSteps(members, input, copies = 1, partial = false, search = null) {
+  const context = getRoleContext(input, search);
+  const { slots, optional } = context.layout(copies);
+  const key = search && members.length <= 64 ? JSON.stringify([copies, partial, members]) : null;
+  if (key !== null && context.matching.has(key)) {
+    yield* searchCheckpoint(search);
+    return copyRoleResult(context.matching.get(key));
+  }
   if (members.length > slots.length) return null;
   const nodes = [];
   for (const member of members) {
     if (search) yield* searchCheckpoint(search, slots.length);
-    nodes.push({ member, choices: slots.flatMap((slot, index) => canAssignRole(profiles.get(member), slot.role) ? [index] : []) });
+    nodes.push({ member, choices: copies === 1 ? context.choices(member) : context.choices(member).flatMap((roleIndex) => Array.from({ length: copies }, (_, index) => roleIndex * copies + index)) });
   }
-  const optional = slots.flatMap((slot, index) => slot.required ? [] : [index]);
   if (!partial) for (let index = members.length; index < slots.length; index += 1) nodes.push({ member: null, choices: optional });
   nodes.sort((a, b) => a.choices.length - b.choices.length);
   const owner = new Map();
@@ -990,8 +1034,9 @@ function* findRoleMatchingSteps(members, input, copies = 1, partial = false, sea
     }
     return false;
   }
-  for (let index = 0; index < nodes.length; index += 1) if (!(yield* augment(index))) return null;
-  return [...owner].sort(([a], [b]) => a - b).flatMap(([slot, node]) => nodes[node].member === null ? [] : [{ member: nodes[node].member, role: slots[slot].role }]);
+  for (let index = 0; index < nodes.length; index += 1) if (!(yield* augment(index))) return cacheRoleResult(context.matching, key, null);
+  const result = [...owner].sort(([a], [b]) => a - b).flatMap(([slot, node]) => nodes[node].member === null ? [] : [{ member: nodes[node].member, role: slots[slot].role }]);
+  return cacheRoleResult(context.matching, key, result);
 }
 
 function validateRoleConfiguration(input) {
@@ -1020,9 +1065,13 @@ function rolePreferenceCost(profile, role) {
 function* optimizeRoleMatchingSteps(members, input, search = null) {
   const roles = input.roles, size = roles.length;
   if (members.length > size) return null;
-  const byName = new Map((input.profiles || []).map((profile) => [profile.name, profile]));
-  const required = new Set(input.requiredRoles || roles), blocked = 1000000;
-  const cost = Array.from({ length: size }, (_, index) => roles.map((role) => index >= members.length ? (required.has(role) ? blocked : 0) : (canAssignRole(byName.get(members[index]), role) ? rolePreferenceCost(byName.get(members[index]), role) : blocked)));
+  const context = getRoleContext(input, search), key = search && members.length <= 64 ? JSON.stringify(members) : null;
+  if (key !== null && context.optimized.has(key)) {
+    yield* searchCheckpoint(search);
+    return copyRoleResult(context.optimized.get(key));
+  }
+  const required = context.required, blocked = 1000000;
+  const cost = Array.from({ length: size }, (_, index) => index >= members.length ? roles.map((role) => required.has(role) ? blocked : 0) : context.costs(members[index]));
   const u = Array(size + 1).fill(0), v = Array(size + 1).fill(0), owner = Array(size + 1).fill(0), way = Array(size + 1).fill(0);
   for (let row = 1; row <= size; row += 1) {
     if (search) yield* searchCheckpoint(search, size * size);
@@ -1049,10 +1098,10 @@ function* optimizeRoleMatchingSteps(members, input, search = null) {
   const result = [];
   for (let column = 1; column <= size; column += 1) {
     const index = owner[column] - 1;
-    if (cost[index][column - 1] >= blocked) return null;
+    if (cost[index][column - 1] >= blocked) return cacheRoleResult(context.optimized, key, null);
     if (index < members.length) result.push({ member: members[index], role: roles[column - 1] });
   }
-  return result;
+  return cacheRoleResult(context.optimized, key, result);
 }
 
 function getRolePreferencePenalty(assignments, profiles = []) {
@@ -1075,6 +1124,8 @@ function scoreAssignment(plan, input, roleAssignments = null) {
 }
 
 function validateAssignmentResult(plan, input, roleAssignments = null, checkRoles = true) {
+  const profilesByName = new Map();
+  for (const profile of input.profiles || []) if (!profilesByName.has(profile.name)) profilesByName.set(profile.name, profile);
   const errors = [...(input.errors || []), ...validateRoleConfiguration(input)];
   if (checkRoles && ((input.twoStage && (!Array.isArray(roleAssignments) || roleAssignments.length !== input.groupCount)) || (!input.twoStage && roleAssignments !== null))) errors.push("역할 결과 구조가 올바르지 않습니다.");
   if (!Array.isArray(plan) || plan.length !== input.groupCount || plan.some((group) => !Array.isArray(group))) return [...errors, "그룹 구조가 올바르지 않습니다."];
@@ -1086,7 +1137,7 @@ function validateAssignmentResult(plan, input, roleAssignments = null, checkRole
     if (group.length < min || group.length > max) errors.push("그룹 정원을 지켜야 합니다.");
     if (input.twoStage && checkRoles) {
       const entries = roleAssignments?.[index];
-      if (!Array.isArray(entries) || entries.length !== group.length || new Set(entries.map((entry) => entry.member)).size !== group.length || new Set(entries.map((entry) => entry.role)).size !== group.length || (input.requiredRoles || input.roles).some((role) => !entries.some((entry) => entry.role === role)) || entries.some((entry) => !group.includes(entry.member) || !input.roles.includes(entry.role) || !canAssignRole(input.profiles?.find((profile) => profile.name === entry.member), entry.role))) errors.push("역할 배정을 확인하세요.");
+      if (!Array.isArray(entries) || entries.length !== group.length || new Set(entries.map((entry) => entry.member)).size !== group.length || new Set(entries.map((entry) => entry.role)).size !== group.length || (input.requiredRoles || input.roles).some((role) => !entries.some((entry) => entry.role === role)) || entries.some((entry) => !group.includes(entry.member) || !input.roles.includes(entry.role) || !canAssignRole(profilesByName.get(entry.member), entry.role))) errors.push("역할 배정을 확인하세요.");
     }
   });
   errors.push(...validatePlan(plan, input.togetherRules, input.separateRules, input.fixedRules, input.attributeRules).filter((item) => item.type === "error").map((item) => item.detail));
