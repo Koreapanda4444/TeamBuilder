@@ -142,7 +142,7 @@ function setResultState(text, type = "default") {
 }
 
 function getInputSignature() {
-  const { locks, ...settings } = getDraftSettings();
+  const { locks, groupNames, ...settings } = getDraftSettings();
   return JSON.stringify(settings);
 }
 
@@ -971,6 +971,13 @@ function flushDraftChanges() {
 
 function handleDraftInput(event) {
   const input = event.currentTarget;
+  if (input === groupNamesInput) {
+    flushDraftChanges();
+    input.removeAttribute("aria-invalid");
+    refreshResultConsistency();
+    saveDraft();
+    return;
+  }
   const first = !draftInputPending;
   draftInputPending = true;
   participantInputPending ||= input === participantsInput;
