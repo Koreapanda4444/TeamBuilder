@@ -336,6 +336,18 @@ function persistSavedSettings() {
   }
 }
 
+function normalizeSavedSettingId(id) {
+  if (typeof id === "number") return Number.isFinite(id) ? String(id) : null;
+  return typeof id === "string" && id.trim() ? id : null;
+}
+
+function createSavedSettingId() {
+  let id;
+  do { id = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10); }
+  while (savedSettings.some((item) => item.id === id));
+  return id;
+}
+
 function loadSavedSettings() {
   const storage = getStorage();
 
@@ -349,8 +361,9 @@ function loadSavedSettings() {
     const parsed = raw ? JSON.parse(raw) : [];
     savedSettings = Array.isArray(parsed) ? parsed.flatMap((item) => {
       try {
-        if (!item || typeof item.id !== "string" || typeof item.name !== "string") return [];
-        return [{ ...item, settings: parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: item.settings })) }];
+        const id = normalizeSavedSettingId(item?.id);
+        if (id === null || typeof item.name !== "string") return [];
+        return [{ ...item, id, settings: parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: item.settings })) }];
       } catch { return []; }
     }) : [];
   } catch {
@@ -1273,7 +1286,7 @@ function saveCurrentSettings() {
   }
 
   const item = {
-    id: Date.now() + Math.random(),
+    id: createSavedSettingId(),
     name,
     settings,
   };
