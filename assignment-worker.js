@@ -1,4 +1,4 @@
-importScripts("engine.js");
+importScripts("engine.js?v=2.0.1");
 
 self.onmessage = ({ data: input }) => {
   try {

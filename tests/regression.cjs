@@ -90,6 +90,11 @@ await test('storage failures leave existing settings and history untouched',()=>
   const before=t.run('JSON.stringify(savedSettings)');for(const action of ['saveCurrentSettings()','updateCurrentSavedSetting()','renameSavedSetting(activeSavedSettingId,"Changed")','deleteSavedSetting(activeSavedSettingId)']){t.run(action);assert.equal(t.run('JSON.stringify(savedSettings)'),before);assert.match(t.run('statusMessage.textContent'),/저장하지 못/)}
   record(t);assert.equal(t.run('resultHistory.length'),0);
 });
+await test('invalid saved drafts are rejected before storage and deletion never prunes unrelated history',()=>{
+  const t=context();t.run('participantsInput.value="A,B";groupCountInput.value="";saveCurrentSettings()');assert.equal(t.run('savedSettings.length'),0);assert.equal(t.data.has('teambuilder.savedSettings.v2'),false);
+  t.run('groupCountInput.value="2"');record(t);record(t);const id=t.run('resultHistory[0].id'),before=t.run('JSON.stringify(resultHistory)');
+  t.storage.setItem=()=>{const error=Error('quota');error.name='QuotaExceededError';throw error};assert.equal(t.run(`deleteResultHistory(${JSON.stringify(id)})`),false);assert.equal(t.run('JSON.stringify(resultHistory)'),before);
+});
 await test('JSON v1/v2, draft locks and CSV compatibility',()=>{
   const t=context();record(t);assert.equal(t.run('parseSettingsJSON(buildSettingsJSON()).locks[0][1]'),0);t.run('saveDraft();lockedAssignments.clear();recoverDraft(localStorage.getItem(DRAFT_STORAGE_KEY))');assert.equal(t.run("lockedAssignments.get('A')"),0);
   assert.equal(t.run('parseSettingsJSON(JSON.stringify({app:"TeamBuilder",version:1,settings:{participants:"A,B",groupCount:2}})).locks.length'),0);

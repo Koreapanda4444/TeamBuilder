@@ -1,3 +1,5 @@
+const APP_VERSION = "2.0.1";
+
 function normalizeParticipantProfile(record) {
   if (!record || Array.isArray(record) || typeof record.name !== "string" || !record.name.trim() || /[\u0000-\u001f\u007f]/u.test(record.name)) throw new Error("참가자 프로필 이름을 확인하세요.");
   if (record.role !== undefined && typeof record.role !== "string") throw new Error("참가자 역할 형식을 확인하세요.");

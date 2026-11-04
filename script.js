@@ -329,19 +329,23 @@ function applyDraftSettings(settings) {
   syncTwoStageControls();
 }
 
+function preserveStorageArchive(storage, key, entries) {
+  const archive = JSON.parse(storage.getItem(key) || "[]");
+  if (!Array.isArray(archive)) throw new Error("Invalid recovery archive");
+  const existing = new Set(archive.map((entry) => JSON.stringify(entry)));
+  let changed = false;
+  for (const entry of entries) {
+    const signature = JSON.stringify(entry);
+    if (!existing.has(signature)) { archive.push(entry); existing.add(signature); changed = true; }
+  }
+  if (changed) storage.setItem(key, JSON.stringify(archive));
+}
+
 function persistSavedSettings(nextSettings = savedSettings) {
   const storage = getStorage();
   if (!storage) { setStatus("브라우저 저장소를 사용할 수 없습니다.", "error"); return false; }
   try {
-    if (settingsRecoverySources.length) {
-      const previous = JSON.parse(storage.getItem(SETTINGS_RECOVERY_KEY) || "[]");
-      if (!Array.isArray(previous)) throw new Error("Invalid recovery archive");
-      const archive = [...previous];
-      for (const source of settingsRecoverySources) {
-        if (!archive.some((entry) => entry.key === source.key && entry.raw === source.raw)) archive.push(source);
-      }
-      storage.setItem(SETTINGS_RECOVERY_KEY, JSON.stringify(archive));
-    }
+    if (settingsRecoverySources.length) preserveStorageArchive(storage, SETTINGS_RECOVERY_KEY, settingsRecoverySources);
     storage.setItem(SAVED_SETTINGS_STORAGE_KEY, JSON.stringify(nextSettings));
     savedSettings = nextSettings;
     settingsRecoverySources = [];
@@ -516,7 +520,7 @@ async function computePlan(input, onProgress = reportSearchProgress) {
   if (typeof Worker === "undefined") return fallback();
   try {
     return await new Promise((resolve, reject) => {
-      const worker = new Worker(new URL("assignment-worker.js", document.baseURI));
+      const worker = new Worker(new URL(`assignment-worker.js?v=${encodeURIComponent(APP_VERSION)}`, document.baseURI));
       let settled = false;
       activeWorker = worker;
       const cleanup = () => { worker.terminate(); if (activeWorker === worker) { activeWorker = null; cancelActiveComputation = null; } };
@@ -1044,23 +1048,21 @@ function normalizeHistoryItem(item) {
   return { id, createdAt: item.createdAt, settings, snapshot, candidates };
 }
 
-function persistResultHistory(nextHistory = resultHistory) {
+function persistResultHistory(nextHistory = resultHistory, { prune = false } = {}) {
   const storage = getStorage();
   if (!storage) { setStatus("결과 기록을 저장할 브라우저 저장소를 사용할 수 없습니다.", "error"); return false; }
-  let next = nextHistory.slice(0, MAX_RESULT_HISTORY).map((item) => ({ ...item }));
-  while (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES && next.length > 1) next.pop();
-  if (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES && next.length) next[0] = { ...next[0], candidates: [] };
-  if (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES) { setStatus("결과는 유지되지만 기록이 너무 커 저장하지 못했습니다.", "error"); return false; }
+  let next = (prune ? nextHistory.slice(0, MAX_RESULT_HISTORY) : nextHistory).map((item) => ({ ...item }));
+  if (prune) {
+    while (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES && next.length > 1) next.pop();
+    if (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES && next.length) next[0] = { ...next[0], candidates: [] };
+    if (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES) { setStatus("결과는 유지되지만 기록이 너무 커 저장하지 못했습니다.", "error"); return false; }
+  }
   try {
-    if (historyRecoveryRaw !== null) {
-      const archive = JSON.parse(storage.getItem(HISTORY_RECOVERY_KEY) || "[]");
-      if (!Array.isArray(archive)) throw new Error("Invalid history archive");
-      if (!archive.includes(historyRecoveryRaw)) storage.setItem(HISTORY_RECOVERY_KEY, JSON.stringify([...archive, historyRecoveryRaw]));
-    }
+    if (historyRecoveryRaw !== null) preserveStorageArchive(storage, HISTORY_RECOVERY_KEY, [historyRecoveryRaw]);
     for (;;) {
       try { storage.setItem(RESULT_HISTORY_KEY, JSON.stringify(next)); break; }
       catch (error) {
-        if (!["QuotaExceededError", "NS_ERROR_DOM_QUOTA_REACHED"].includes(error.name) && ![22, 1014].includes(error.code)) throw error;
+        if (!prune || (!["QuotaExceededError", "NS_ERROR_DOM_QUOTA_REACHED"].includes(error.name) && ![22, 1014].includes(error.code))) throw error;
         if (next.length > 1) next.pop();
         else if (next[0]?.candidates?.length) next[0] = { ...next[0], candidates: [] };
         else throw error;
@@ -1092,7 +1094,7 @@ function loadResultHistory() {
 function recordResultHistory() {
   if (!lastPlan || !lastQuality?.valid) return false;
   const item = { id: createSavedSettingId(), createdAt: new Date().toISOString(), settings: structuredClone(getDraftSettings()), snapshot: createResultSnapshot(), candidates: structuredClone(resultCandidates) };
-  const saved = persistResultHistory([item, ...resultHistory]);
+  const saved = persistResultHistory([item, ...resultHistory], { prune: true });
   renderResultHistory(); return saved;
 }
 
@@ -1388,9 +1390,15 @@ function renderSavedSettings() {
   });
 }
 
+function getSavableSettings() {
+  try { return parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 2, settings: getDraftSettings() })); }
+  catch (error) { setStatus((error.message || "저장할 설정을 확인하세요.").replace(/^JSON\s*/u, ""), "error"); return null; }
+}
+
 function saveCurrentSettings() {
   flushDraftChanges();
-  const settings = getDraftSettings();
+  const settings = getSavableSettings();
+  if (!settings) return false;
   const meta = getSettingsMeta(settings);
   const name = savedSettingsNameInput.value.trim() || `저장값 ${savedSettings.length + 1}`;
 
@@ -1422,7 +1430,8 @@ function updateCurrentSavedSetting() {
     return;
   }
 
-  const settings = getDraftSettings();
+  const settings = getSavableSettings();
+  if (!settings) return false;
   const meta = getSettingsMeta(settings);
 
   if (meta.participantCount === 0 && meta.ruleCount === 0) {
@@ -1781,7 +1790,7 @@ function exportResultCSV() {
 function buildResultJSON() {
   const input = getInputs(), names = getGroupNames(lastPlan.length);
   const profiles = new Map(input.profiles.map((profile) => [profile.name, profile]));
-  return JSON.stringify({ app: "TeamBuilder", version: 2, type: "result", settings: getDraftSettings(), seed: input.seed, quality: lastQuality, candidates: resultCandidates, distributions: getAttributeDistributions(lastPlan, input.profiles), groups: lastPlan.map((group, index) => ({ name: names[index], members: group.map((member) => ({ ...profiles.get(member), role: lastRoleAssignments?.[index]?.find((entry) => entry.member === member)?.role || "", locked: lockedAssignments.has(member) })) })) }, null, 2);
+  return JSON.stringify({ app: "TeamBuilder", version: 2, appVersion: APP_VERSION, type: "result", settings: getDraftSettings(), seed: input.seed, quality: lastQuality, candidates: resultCandidates, distributions: getAttributeDistributions(lastPlan, input.profiles), groups: lastPlan.map((group, index) => ({ name: names[index], members: group.map((member) => ({ ...profiles.get(member), role: lastRoleAssignments?.[index]?.find((entry) => entry.member === member)?.role || "", locked: lockedAssignments.has(member) })) })) }, null, 2);
 }
 
 function exportResultJSON() {
@@ -1807,7 +1816,7 @@ async function copyResult() {
 }
 
 function buildSettingsJSON(settings = getDraftSettings()) {
-  return JSON.stringify({ app: "TeamBuilder", version: 2, settings, locks: [...lockedAssignments] }, null, 2);
+  return JSON.stringify({ app: "TeamBuilder", version: 2, appVersion: APP_VERSION, settings, locks: [...lockedAssignments] }, null, 2);
 }
 
 function parseSettingsJSON(text) {
@@ -1887,7 +1896,9 @@ function restoreSettings(settings) {
 function exportSettingsJSON() {
   flushDraftChanges();
   if (isGenerating) return;
-  downloadText("TeamBuilder-settings.json", buildSettingsJSON(), "application/json;charset=utf-8");
+  const settings = getSavableSettings();
+  if (!settings) return false;
+  downloadText("TeamBuilder-settings.json", buildSettingsJSON(settings), "application/json;charset=utf-8");
   setStatus("설정을 내보냈습니다.", "success");
 }
 
