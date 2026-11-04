@@ -71,6 +71,10 @@ const visibleMemberLimits = new Map();
 let selectedCandidateId = null;
 let resultHistory = [];
 const RESULT_HISTORY_KEY = "teambuilder.resultHistory.v2";
+const HISTORY_RECOVERY_KEY = "teambuilder.resultHistory.recovery";
+const MAX_RESULT_HISTORY = 20;
+const MAX_HISTORY_BYTES = 1500000;
+let historyRecoveryRaw = null;
 const DRAFT_STORAGE_KEY = "teambuilder.draft.v2";
 let draftSaveTimer = null;
 let draftRenderTimer = null;
@@ -356,7 +360,7 @@ function normalizeSavedSettingId(id) {
 function createSavedSettingId() {
   let id;
   do { id = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10); }
-  while (savedSettings.some((item) => item.id === id));
+  while (savedSettings.some((item) => item.id === id) || resultHistory.some((item) => item.id === id));
   return id;
 }
 
@@ -393,33 +397,33 @@ function loadSavedSettings() {
   }
 }
 
-function getGroupNames(groupCount) {
-  const names = splitLines(groupNamesInput.value);
+function getGroupNames(groupCount, value = groupNamesInput.value) {
+  const names = splitLines(value);
   const count = Number.isInteger(groupCount) && groupCount > 0 && groupCount <= 24 ? groupCount : 0;
 
   return Array.from({ length: count }, (_, index) => names[index] || `${index + 1}그룹`);
 }
 
-function validateGroupNames(groupCount) {
+function validateGroupNames(groupCount, value = groupNamesInput.value) {
   if (!Number.isInteger(groupCount) || groupCount < 1) {
     return [];
   }
 
-  const names = getGroupNames(groupCount);
+  const names = getGroupNames(groupCount, value);
   const duplicates = duplicateItems(names);
 
   return duplicates.length ? [`그룹 이름이 중복되어 있습니다: ${duplicates.join(", ")}`] : [];
 }
 
-function getInputs() {
-  const parsedParticipants = getParticipantNames();
+function getInputs(settings = getDraftSettings()) {
+  const parsedParticipants = getParticipantNames(settings.participants, settings.participantRecords);
   const participants = uniqueItems(parsedParticipants);
   const duplicateCount = parsedParticipants.length - participants.length;
-  const groupCount = Number(groupCountInput.value);
-  const rollCount = Number(rollCountInput.value || DEFAULT_ROLL_COUNT);
+  const groupCount = Number(settings.groupCount);
+  const rollCount = Number(settings.rollCount || DEFAULT_ROLL_COUNT);
   const attempts = DEFAULT_ATTEMPTS;
   const errors = [];
-  const maxMs = Number(searchTimeInput.value), maxOperations = Number(searchOperationsInput.value);
+  const maxMs = Number(settings.maxMs), maxOperations = Number(settings.maxOperations);
   if (!Number.isInteger(maxMs) || maxMs < 50 || maxMs > 30000 || !Number.isSafeInteger(maxOperations) || maxOperations < 100 || maxOperations > 10000000) errors.push("탐색 제한 범위를 확인하세요.");
 
   if (participants.length < 2) {
@@ -438,20 +442,20 @@ function getInputs() {
     errors.push(`돌리기는 1부터 ${MAX_ROLL_COUNT} 사이로 입력해야 합니다.`);
   }
 
-  if (seedInput.value.length > 256) errors.push("시드는 256자 이하여야 합니다.");
+  if (settings.seed.length > 256) errors.push("시드는 256자 이하여야 합니다.");
   if (!Number.isInteger(attempts) || attempts < 100) {
     errors.push("시도 횟수는 100 이상이어야 합니다.");
   }
 
-  const together = parseRules(togetherInput.value, participants, "함께 배정");
-  const separate = parseRules(separateInput.value, participants, "분리 배정");
-  const fixed = parseFixedRules(fixedInput.value, participants, groupCount);
-  const attributes = parseAttributeRules(attributesInput.value, participants);
-  const groupNameErrors = validateGroupNames(groupCount);
-  const capacityInput = parseGroupCapacities(groupCapacitiesInput.value, groupCount, participants.length);
-  const roleInput = parseRoleList(rolesInput.value, twoStageInput.checked);
+  const together = parseRules(settings.together, participants, "함께 배정");
+  const separate = parseRules(settings.separate, participants, "분리 배정");
+  const fixed = parseFixedRules(settings.fixed, participants, groupCount);
+  const attributes = parseAttributeRules(settings.attributes, participants);
+  const groupNameErrors = validateGroupNames(groupCount, settings.groupNames);
+  const capacityInput = parseGroupCapacities(settings.groupCapacities, groupCount, participants.length);
+  const roleInput = parseRoleList(settings.roles, settings.twoStage);
 
-  if (twoStageInput.checked && !capacityInput.errors.length && !roleInput.errors.length) {
+  if (settings.twoStage && !capacityInput.errors.length && !roleInput.errors.length) {
     errors.push(...validateNestedCapacities(participants.length, groupCount, capacityInput.capacities, roleInput.roleCount, roleInput.requiredRoles.length));
   }
 
@@ -460,23 +464,23 @@ function getInputs() {
   return {
     participants,
     maxMs, maxOperations,
-    seed: seedInput.value,
+    seed: settings.seed,
     groupCount,
     capacities: capacityInput.capacities,
-    twoStage: twoStageInput.checked,
+    twoStage: settings.twoStage,
     roles: roleInput.roles,
     requiredRoles: roleInput.requiredRoles, optionalRoles: roleInput.optionalRoles,
     roleCount: roleInput.roleCount,
     rollCount,
-    groupNames: getGroupNames(groupCount),
+    groupNames: getGroupNames(groupCount, settings.groupNames),
     attempts,
     togetherRules: together.rules,
     separateRules: separate.rules,
     fixedRules: fixed.rules,
     attributeRules: attributes.rules,
-    rolePreferenceWeight,
-    balanceWeights: { ...balanceWeights },
-    profiles: createParticipantProfiles(participants, participantRecords, attributes.rules),
+    rolePreferenceWeight: settings.rolePreferenceWeight,
+    balanceWeights: { ...settings.balanceWeights },
+    profiles: createParticipantProfiles(participants, settings.participantRecords, attributes.rules),
     duplicateCount,
     errors,
   };
@@ -1014,52 +1018,124 @@ function recoverDraft(raw) {
   } catch { return false; }
 }
 
-function persistResultHistory() {
-  try { getStorage()?.setItem(RESULT_HISTORY_KEY, JSON.stringify(resultHistory)); }
-  catch { setStatus("결과는 생성되었지만 기록 저장 공간이 부족합니다.", "error"); }
+function normalizeHistoryItem(item) {
+  const id = normalizeSavedSettingId(item?.id);
+  if (!id || typeof item.createdAt !== "string" || !Number.isFinite(Date.parse(item.createdAt)) || !item.snapshot) throw new Error("기록 형식을 확인하세요.");
+  const source = item.settings;
+  const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 2, settings: source, locks: source?.locks ?? item.snapshot.locks ?? [] }));
+  const input = getInputs(settings), snapshot = structuredClone(item.snapshot);
+  const locks = snapshot.locks;
+  if (!Array.isArray(locks) || locks.some((entry) => !Array.isArray(entry) || entry.length !== 2 || !input.participants.includes(entry[0]) || !Number.isInteger(entry[1]) || entry[1] < 0 || entry[1] >= input.groupCount || !snapshot.plan?.[entry[1]]?.includes(entry[0])) || new Set(locks.map(([member]) => member)).size !== locks.length) throw new Error("기록의 고정 정보를 확인하세요.");
+  const lockKey = (values) => JSON.stringify([...values].sort(([a], [b]) => a.localeCompare(b)));
+  if (lockKey(locks) !== lockKey(settings.locks)) throw new Error("기록과 설정의 고정 정보가 일치하지 않습니다.");
+  if (JSON.stringify(snapshot.capacities ?? null) !== JSON.stringify(input.capacities)) throw new Error("기록의 정원이 설정과 다릅니다.");
+  input.fixedRules = [...input.fixedRules, ...locks.map(([member, groupIndex]) => ({ member, groupIndex }))];
+  snapshot.roleAssignments ??= null;
+  const errors = validateAssignmentResult(snapshot.plan, input, snapshot.roleAssignments);
+  if (errors.length) throw new Error(errors[0]);
+  snapshot.quality = scoreAssignment(snapshot.plan, input, snapshot.roleAssignments);
+  const candidates = (Array.isArray(item.candidates) ? item.candidates : []).flatMap((candidate) => {
+    try {
+      if (!candidate || typeof candidate.id !== "string" || !Number.isInteger(candidate.roll) || candidate.roll < 1 || candidate.roll > input.rollCount || candidate.seed !== (input.rollCount === 1 ? input.seed : `${input.seed}:${candidate.roll}`) || validateAssignmentResult(candidate.plan, input, candidate.roleAssignments).length) return [];
+      return [{ ...candidate, quality: scoreAssignment(candidate.plan, input, candidate.roleAssignments) }];
+    } catch { return []; }
+  }).slice(0, 5);
+  if (!candidates.some((candidate) => candidate.id === snapshot.selectedCandidateId && candidateFingerprint(candidate) === candidateFingerprint(snapshot))) snapshot.selectedCandidateId = null;
+  return { id, createdAt: item.createdAt, settings, snapshot, candidates };
+}
+
+function persistResultHistory(nextHistory = resultHistory) {
+  const storage = getStorage();
+  if (!storage) { setStatus("결과 기록을 저장할 브라우저 저장소를 사용할 수 없습니다.", "error"); return false; }
+  let next = nextHistory.slice(0, MAX_RESULT_HISTORY).map((item) => ({ ...item }));
+  while (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES && next.length > 1) next.pop();
+  if (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES && next.length) next[0] = { ...next[0], candidates: [] };
+  if (JSON.stringify(next).length * 2 > MAX_HISTORY_BYTES) { setStatus("결과는 유지되지만 기록이 너무 커 저장하지 못했습니다.", "error"); return false; }
+  try {
+    if (historyRecoveryRaw !== null) {
+      const archive = JSON.parse(storage.getItem(HISTORY_RECOVERY_KEY) || "[]");
+      if (!Array.isArray(archive)) throw new Error("Invalid history archive");
+      if (!archive.includes(historyRecoveryRaw)) storage.setItem(HISTORY_RECOVERY_KEY, JSON.stringify([...archive, historyRecoveryRaw]));
+    }
+    for (;;) {
+      try { storage.setItem(RESULT_HISTORY_KEY, JSON.stringify(next)); break; }
+      catch (error) {
+        if (!["QuotaExceededError", "NS_ERROR_DOM_QUOTA_REACHED"].includes(error.name) && ![22, 1014].includes(error.code)) throw error;
+        if (next.length > 1) next.pop();
+        else if (next[0]?.candidates?.length) next[0] = { ...next[0], candidates: [] };
+        else throw error;
+      }
+    }
+    resultHistory = next; historyRecoveryRaw = null;
+    return true;
+  } catch { setStatus("결과는 유지되지만 기록 저장에 실패했습니다. 기존 기록은 보존됩니다.", "error"); return false; }
 }
 
 function loadResultHistory() {
+  resultHistory = []; historyRecoveryRaw = null;
+  let raw;
   try {
-    const parsed = JSON.parse(getStorage()?.getItem(RESULT_HISTORY_KEY) || "[]");
-    resultHistory = Array.isArray(parsed) ? parsed.filter((item) => item && typeof item.id === "string" && typeof item.createdAt === "string" && item.settings && item.snapshot).slice(0, 20) : [];
-  } catch { resultHistory = []; }
+    raw = getStorage()?.getItem(RESULT_HISTORY_KEY);
+    const parsed = JSON.parse(raw || "[]");
+    if (!Array.isArray(parsed)) throw new Error("Invalid history list");
+    const ids = new Set();
+    for (const entry of parsed) {
+      try {
+        const item = normalizeHistoryItem(entry);
+        if (ids.has(item.id) || resultHistory.length >= MAX_RESULT_HISTORY) throw new Error("Duplicate history entry");
+        ids.add(item.id); resultHistory.push(item);
+      } catch { historyRecoveryRaw = raw; }
+    }
+  } catch { if (typeof raw === "string") historyRecoveryRaw = raw; }
 }
 
 function recordResultHistory() {
-  if (!lastPlan || !lastQuality?.valid) return;
-  resultHistory.unshift({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8), createdAt: new Date().toISOString(), settings: structuredClone(getDraftSettings()), snapshot: createResultSnapshot(), candidates: structuredClone(resultCandidates) });
-  resultHistory.splice(20); persistResultHistory(); renderResultHistory();
+  if (!lastPlan || !lastQuality?.valid) return false;
+  const item = { id: createSavedSettingId(), createdAt: new Date().toISOString(), settings: structuredClone(getDraftSettings()), snapshot: createResultSnapshot(), candidates: structuredClone(resultCandidates) };
+  const saved = persistResultHistory([item, ...resultHistory]);
+  renderResultHistory(); return saved;
 }
 
 function restoreResultHistory(id) {
   if (isGenerating) return false;
-  const item = resultHistory.find((entry) => entry.id === id);
-  if (!item) return false;
-  const previous = getDraftSettings();
   try {
-    const settings = parseSettingsJSON(JSON.stringify({ app: "TeamBuilder", version: 1, settings: item.settings }));
-    applyDraftSettings(settings);
-    const input = getInputs(), snapshot = structuredClone(item.snapshot);
-    snapshot.capacities = input.capacities ? [...input.capacities] : null;
-    if (!Array.isArray(snapshot.locks) || snapshot.locks.some((entry) => !Array.isArray(entry) || entry.length !== 2 || !input.participants.includes(entry[0]) || !Number.isInteger(entry[1]) || !snapshot.plan?.[entry[1]]?.includes(entry[0]))) throw new Error("기록의 고정 정보를 확인하세요.");
-    input.fixedRules.push(...snapshot.locks.map(([member, groupIndex]) => ({ member, groupIndex })));
-    const errors = validateAssignmentResult(snapshot.plan, input, snapshot.roleAssignments);
-    if (errors.length) throw new Error(errors[0]);
-    snapshot.signature = getInputSignature(); snapshot.quality = scoreAssignment(snapshot.plan, input, snapshot.roleAssignments);
-    resultCandidates = (Array.isArray(item.candidates) ? item.candidates : []).filter((candidate) => candidate && typeof candidate.id === "string" && !validateAssignmentResult(candidate.plan, input, candidate.roleAssignments).length).slice(0, 5).map((candidate) => ({ ...candidate, quality: scoreAssignment(candidate.plan, input, candidate.roleAssignments) }));
-    restoreResultSnapshot(snapshot); clearEditHistory(); renderDraftStats(); renderResultHistory();
+    const source = resultHistory.find((entry) => entry.id === id);
+    if (!source) return false;
+    const item = normalizeHistoryItem(source);
+    restoreSettings(item.settings);
+    item.snapshot.signature = getInputSignature();
+    resultCandidates = item.candidates;
+    restoreResultSnapshot(item.snapshot); clearEditHistory(); renderDraftStats(); renderResultHistory(); saveDraft();
     setStatus("생성 조건·시드와 결과를 복원했습니다.", "success"); return true;
-  } catch (error) { applyDraftSettings(previous); setStatus(error.message || "결과 기록을 복원할 수 없습니다.", "error"); return false; }
+  } catch (error) { setStatus(error.message || "결과 기록을 복원할 수 없습니다.", "error"); return false; }
+}
+
+function deleteResultHistory(id) {
+  if (isGenerating || !resultHistory.some((item) => item.id === id)) return false;
+  if (!persistResultHistory(resultHistory.filter((item) => item.id !== id))) return false;
+  renderResultHistory(); setStatus("결과 기록을 삭제했습니다.", "success"); return true;
+}
+
+function clearResultHistory() {
+  if (isGenerating || !resultHistory.length || !confirm("저장된 결과 기록을 모두 삭제할까요? 현재 배정 결과와 저장값은 유지됩니다.")) return false;
+  if (!persistResultHistory([])) return false;
+  renderResultHistory(); setStatus("결과 기록을 모두 삭제했습니다.", "success"); return true;
 }
 
 function renderResultHistory() {
   const list = document.querySelector("#resultHistoryList"); list.replaceChildren();
+  const clear = document.querySelector("#clearResultHistoryButton");
+  clear.disabled = isGenerating || !resultHistory.length;
+  document.querySelector("#resultHistoryCount").textContent = `${resultHistory.length}/${MAX_RESULT_HISTORY}`;
   if (!resultHistory.length) { const empty = document.createElement("p"); empty.className = "saved-empty"; empty.textContent = "생성한 결과가 여기에 기록됩니다."; list.append(empty); }
   resultHistory.forEach((item) => {
+    const row = document.createElement("div"); row.className = "saved-item";
     const button = document.createElement("button"); button.type = "button"; button.className = "saved-load";
-    button.textContent = `${new Date(item.createdAt).toLocaleString()} · 시드 ${item.settings.seed || "—"} · ${(Number.isFinite(item.snapshot.quality?.total) ? item.snapshot.quality.total.toFixed(1) : "—")}점`;
-    button.disabled = isGenerating; button.addEventListener("click", () => restoreResultHistory(item.id)); list.append(button);
+    const label = `${new Date(item.createdAt).toLocaleString()} · 시드 ${item.settings.seed || "—"} · ${(Number.isFinite(item.snapshot.quality?.total) ? item.snapshot.quality.total.toFixed(1) : "—")}점`;
+    button.textContent = label;
+    button.disabled = isGenerating; button.addEventListener("click", () => restoreResultHistory(item.id));
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "saved-delete"; remove.textContent = "삭제"; remove.setAttribute("aria-label", `${label} 기록 삭제`); remove.disabled = isGenerating; remove.addEventListener("click", () => deleteResultHistory(item.id));
+    row.append(button, remove); list.append(row);
   });
 }
 
@@ -1945,6 +2021,7 @@ copyButton.addEventListener("click", copyResult);
 exportCSVButton.addEventListener("click", exportResultCSV);
 exportResultJSONButton.addEventListener("click", exportResultJSON);
 saveSettingsButton.addEventListener("click", saveCurrentSettings);
+document.querySelector("#clearResultHistoryButton").addEventListener("click", clearResultHistory);
 updateSettingsButton.addEventListener("click", updateCurrentSavedSetting);
 [participantsInput, groupNamesInput, togetherInput, separateInput, fixedInput, attributesInput].forEach((input) => {
   input.addEventListener("keydown", handleInputKeydown);
